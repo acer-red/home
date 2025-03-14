@@ -13,57 +13,46 @@ class _IndexState extends State<Index> {
   double height = 700;
   final double titlesize = 56.0;
   final List<String> productName = ['枫迹', '深度交流', '组织信息', '关系通讯'];
-
+  int shortWidth = 400;
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         surfaceTintColor: Colors.white,
-
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(
-              'assets/images/icon-transparent-256.png',
-              width: 30,
-              height: 30,
-              fit: BoxFit.scaleDown,
-            ),
-            Row(
-              children:
-                  productName.map((section) {
-                    int index = productName.indexOf(section);
-                    return TextButton(
-                      onPressed: () {
-                        _scrollToSection(index);
-                      },
-                      child: Text(
-                        section,
-                        style: TextStyle(color: Colors.black),
-                      ),
-                    );
-                  }).toList(),
-            ),
-            IconButton(
-              icon: Icon(Icons.person),
-              onPressed: () {
-                // Show a bottom sheet
-                showModalBottomSheet(
-                  context: context,
-                  builder: (BuildContext context) {
-                    // Display a message
-                    return Container(
-                      padding: EdgeInsets.all(20),
-                      child: Text('此功能暂未开发，敬请期待！'),
-                    );
-                  },
-                );
-                // Close the bottom sheet after 2 seconds
-              },
-            ),
-          ],
-        ),
+        leading: MediaQuery.of(context).size.width < shortWidth ? icon() : null,
+        actions:
+            MediaQuery.of(context).size.width > shortWidth
+                ? null
+                : [popupMenu()],
+        title:
+            MediaQuery.of(context).size.width < shortWidth
+                ? null
+                : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    icon(),
+                    Row(
+                      children:
+                          productName.map((section) {
+                            int index = productName.indexOf(section);
+                            return TextButton(
+                              onPressed: () {
+                                _scrollToSection(index);
+                              },
+                              child: Text(
+                                section,
+                                style: TextStyle(color: Colors.black),
+                              ),
+                            );
+                          }).toList(),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.person),
+                      onPressed: () => login(),
+                    ),
+                  ],
+                ),
         backgroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -75,11 +64,52 @@ class _IndexState extends State<Index> {
             SocraQuest(height: height, titlesize: titlesize),
             Entanglement(height: height, titlesize: titlesize),
             FengXin(height: height, titlesize: titlesize),
-
-            // Second Section: Blocks based on productName, colores, and githubURL
           ],
         ),
       ),
+    );
+  }
+
+  login() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        // Display a message
+        return Container(
+          padding: EdgeInsets.all(20),
+          child: Text('此功能暂未开发，敬请期待！'),
+        );
+      },
+    );
+  }
+
+  Image icon() {
+    return Image.asset(
+      'assets/images/icon-transparent-256.png',
+      width: 30,
+      height: 30,
+      fit: BoxFit.scaleDown,
+    );
+  }
+
+  Widget popupMenu() {
+    return PopupMenuButton<int>(
+      color: Colors.white,
+      onSelected: (int index) {
+        _scrollToSection(index);
+      },
+      child: const Padding(
+        padding: EdgeInsets.all(8.0),
+        child: Icon(Icons.menu),
+      ),
+      itemBuilder: (BuildContext context) {
+        return List<PopupMenuEntry<int>>.generate(productName.length, (index) {
+          return PopupMenuItem<int>(
+            value: index,
+            child: Text(productName[index]),
+          );
+        });
+      },
     );
   }
 
@@ -115,9 +145,17 @@ class Face extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            "创意产品的汇聚地",
-            style: TextStyle(fontSize: titlesize, letterSpacing: 20.0),
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 20),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                "创意产品的汇聚地",
+                style: TextStyle(fontSize: titlesize, letterSpacing: 20.0),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
           IconButton(
             icon: Image.asset(
@@ -156,15 +194,28 @@ class WhiperingTime extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SelectableText(
-            "枫迹",
-            style: TextStyle(
-              fontSize: titlesize,
-              letterSpacing: 20.0, // Adjust the value as needed
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SelectableText(
+              "枫迹",
+              style: TextStyle(
+                fontSize: titlesize,
+                letterSpacing: 20.0, // Adjust the value as needed
+              ),
             ),
           ),
           SizedBox(height: 20.0),
-          SelectableText("生活不只是日复一日，更是步步印迹", style: TextStyle(fontSize: 20.0)),
+          Padding(
+            padding: const EdgeInsets.only(left: 20,right: 20),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SelectableText(
+                "生活不只是日复一日，更是步步印迹",
+                style: TextStyle(fontSize: 20.0),
+                maxLines: 1,
+              ),
+            ),
+          ),
           SizedBox(height: 20.0),
           SelectableText("即将开源", style: TextStyle(fontSize: 20.0)),
 
@@ -191,7 +242,13 @@ class SocraQuest extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SelectableText("深度交流", style: TextStyle(fontSize: titlesize)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SelectableText(
+              "深度交流",
+              style: TextStyle(fontSize: titlesize),
+            ),
+          ),
           SizedBox(height: 10.0),
           SelectableText("构思中", style: TextStyle(fontSize: 20.0)),
         ],
@@ -220,12 +277,18 @@ class Entanglement extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SelectableText(
-            "组织信息",
-            style: TextStyle(fontSize: titlesize, color: Colors.white),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SelectableText(
+              "组织信息",
+              style: TextStyle(fontSize: titlesize, color: Colors.white),
+            ),
           ),
-           SizedBox(height: 10.0),
-          SelectableText("计划中", style: TextStyle(fontSize: 20.0,color: Colors.white)),
+          SizedBox(height: 10.0),
+          SelectableText(
+            "计划中",
+            style: TextStyle(fontSize: 20.0, color: Colors.white),
+          ),
         ],
       ),
     );
@@ -248,12 +311,18 @@ class FengXin extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SelectableText(
-            "关系通讯",
-            style: TextStyle(fontSize: titlesize, color: Colors.white),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SelectableText(
+              "关系通讯",
+              style: TextStyle(fontSize: titlesize, color: Colors.white),
+            ),
           ),
-            SizedBox(height: 10.0),
-          SelectableText("计划中", style: TextStyle(fontSize: 20.0,color: Colors.white)),
+          SizedBox(height: 10.0),
+          SelectableText(
+            "计划中",
+            style: TextStyle(fontSize: 20.0, color: Colors.white),
+          ),
           // Add more introductory text or widgets here
         ],
       ),
