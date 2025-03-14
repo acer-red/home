@@ -127,7 +127,7 @@ class Face extends StatelessWidget {
               fit: BoxFit.scaleDown,
             ),
             onPressed: () {
-              _launchUrl('https://github.com/acer-red');
+              _launchUrl('https://github.com/acer-red/home');
             },
           ),
         ],
