@@ -1,3 +1,5 @@
+github.com/acer-red/randResources v0.1.0 h1:yL11ZpgpJcA4mdvkpfABIqRfjSgvGaTpP4SMkqKbk2k=
+github.com/acer-red/randResources v0.1.0/go.mod h1:LJrsE2HqJdxgoFut5mDK6QSV+R/l0L1GMJIRWQy0Nag=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/golang/snappy v0.0.4 h1:yAGX7huGHXlcLOEtBnF4w7FQwA26wojNCwOYAEhLjQM=

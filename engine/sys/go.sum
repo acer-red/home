@@ -1,3 +1,5 @@
+github.com/acer-red/randResources v0.1.0 h1:yL11ZpgpJcA4mdvkpfABIqRfjSgvGaTpP4SMkqKbk2k=
+github.com/acer-red/randResources v0.1.0/go.mod h1:LJrsE2HqJdxgoFut5mDK6QSV+R/l0L1GMJIRWQy0Nag=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 golang.org/x/crypto v0.36.0 h1:AnAEvhDddvBdpY+uR+MyHmuZzzNqXSe/GvuDeob5L34=

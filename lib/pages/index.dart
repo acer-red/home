@@ -1,4 +1,4 @@
-import 'package:acer_red/pages/user/user.dart';
+import 'package:acer_red/pages/login/login.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:acer_red/pages/product/entanglement.dart';

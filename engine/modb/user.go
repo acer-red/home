@@ -134,6 +134,7 @@ func (req *RequestUserRegister) Register() (string, error) {
 
 	m := bson.D{
 		{Key: "username", Value: req.Username},
+		{Key: "nickname", Value: sys.RandomNickname()},
 		{Key: "password", Value: req.Password},
 		{Key: "email", Value: req.Email},
 		{Key: "id", Value: id},
