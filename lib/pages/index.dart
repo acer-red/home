@@ -1,14 +1,22 @@
+import 'package:acer_red/pages/user/user.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:acer_red/pages/product/entanglement.dart';
+import 'package:acer_red/pages/product/feng_xin.dart';
+import 'package:acer_red/pages/product/socra_quest.dart';
+import 'package:acer_red/pages/product/whispering_time.dart';
+import 'package:acer_red/env/config.dart';
+import 'package:acer_red/env/ui.dart';
+import 'package:acer_red/pages/home/home.dart';
 
-class Index extends StatefulWidget {
-  const Index({super.key});
+class Home extends StatefulWidget {
+  const Home({super.key});
 
   @override
-  State<Index> createState() => _IndexState();
+  State<Home> createState() => _Home();
 }
 
-class _IndexState extends State<Index> {
+class _Home extends State<Home> {
   final ScrollController _scrollController = ScrollController();
   double height = 700;
   final double titlesize = 56.0;
@@ -20,18 +28,18 @@ class _IndexState extends State<Index> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         surfaceTintColor: Colors.white,
-        leading: MediaQuery.of(context).size.width < shortWidth ? icon() : null,
+        leading: MediaQuery.of(context).size.width < shortWidth ? logo() : null,
         actions:
             MediaQuery.of(context).size.width > shortWidth
                 ? null
-                : [popupMenu()],
+                : [loginIcon(), menuIcon()],
         title:
             MediaQuery.of(context).size.width < shortWidth
                 ? null
                 : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    icon(),
+                    logo(),
                     Row(
                       children:
                           productName.map((section) {
@@ -47,10 +55,7 @@ class _IndexState extends State<Index> {
                             );
                           }).toList(),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.person),
-                      onPressed: () => login(),
-                    ),
+                    loginIcon(),
                   ],
                 ),
         backgroundColor: Colors.white,
@@ -60,7 +65,7 @@ class _IndexState extends State<Index> {
         child: Column(
           children: [
             Face(height: height, titlesize: titlesize),
-            WhiperingTime(height: height, titlesize: titlesize),
+            WhisperingTime(height: height, titlesize: titlesize),
             SocraQuest(height: height, titlesize: titlesize),
             Entanglement(height: height, titlesize: titlesize),
             FengXin(height: height, titlesize: titlesize),
@@ -70,29 +75,36 @@ class _IndexState extends State<Index> {
     );
   }
 
-  login() {
-    showModalBottomSheet(
+  Widget loginIcon() {
+    return IconButton(
+      icon: Icon(Icons.person),
+      onPressed: () {
+        Settings().getLogin() ? enterHomePage() : dialogLogin();
+      },
+    );
+  }
+
+  enterHomePage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => HomePage()),
+    );
+  }
+
+  dialogLogin() {
+    showDialog(
       context: context,
       builder: (BuildContext context) {
-        // Display a message
-        return Container(
-          padding: EdgeInsets.all(20),
-          child: Text('此功能暂未开发，敬请期待！'),
+        return Dialog(
+          child: IntrinsicHeight(child: SizedBox(width: 250, child: Login())),
         );
       },
     );
   }
 
-  Image icon() {
-    return Image.asset(
-      'assets/images/icon-transparent-256.png',
-      width: 30,
-      height: 30,
-      fit: BoxFit.scaleDown,
-    );
-  }
 
-  Widget popupMenu() {
+
+  Widget menuIcon() {
     return PopupMenuButton<int>(
       color: Colors.white,
       onSelected: (int index) {
@@ -168,162 +180,6 @@ class Face extends StatelessWidget {
               _launchUrl('https://github.com/acer-red/home');
             },
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class WhiperingTime extends StatelessWidget {
-  const WhiperingTime({
-    super.key,
-    required this.height,
-    required this.titlesize,
-  });
-
-  final double height;
-  final double titlesize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      color: Color.fromRGBO(255, 238, 227, 1),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: SelectableText(
-              "枫迹",
-              style: TextStyle(
-                fontSize: titlesize,
-                letterSpacing: 20.0, // Adjust the value as needed
-              ),
-            ),
-          ),
-          SizedBox(height: 20.0),
-          Padding(
-            padding: const EdgeInsets.only(left: 20,right: 20),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: SelectableText(
-                "生活不只是日复一日，更是步步印迹",
-                style: TextStyle(fontSize: 20.0),
-                maxLines: 1,
-              ),
-            ),
-          ),
-          SizedBox(height: 20.0),
-          SelectableText("即将开源", style: TextStyle(fontSize: 20.0)),
-
-          // Add more introductory text or widgets here
-        ],
-      ),
-    );
-  }
-}
-
-class SocraQuest extends StatelessWidget {
-  const SocraQuest({super.key, required this.height, required this.titlesize});
-
-  final double height;
-  final double titlesize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      color: Color(0xFFb8b8f3), // Use the second color
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: SelectableText(
-              "深度交流",
-              style: TextStyle(fontSize: titlesize),
-            ),
-          ),
-          SizedBox(height: 10.0),
-          SelectableText("构思中", style: TextStyle(fontSize: 20.0)),
-        ],
-      ),
-    );
-  }
-}
-
-class Entanglement extends StatelessWidget {
-  const Entanglement({
-    super.key,
-    required this.height,
-    required this.titlesize,
-  });
-
-  final double height;
-  final double titlesize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      color: Color(0xFF191923),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: SelectableText(
-              "组织信息",
-              style: TextStyle(fontSize: titlesize, color: Colors.white),
-            ),
-          ),
-          SizedBox(height: 10.0),
-          SelectableText(
-            "计划中",
-            style: TextStyle(fontSize: 20.0, color: Colors.white),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class FengXin extends StatelessWidget {
-  const FengXin({super.key, required this.height, required this.titlesize});
-
-  final double height;
-  final double titlesize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      color: Color(0xFFCC5803),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: SelectableText(
-              "关系通讯",
-              style: TextStyle(fontSize: titlesize, color: Colors.white),
-            ),
-          ),
-          SizedBox(height: 10.0),
-          SelectableText(
-            "计划中",
-            style: TextStyle(fontSize: 20.0, color: Colors.white),
-          ),
-          // Add more introductory text or widgets here
         ],
       ),
     );
