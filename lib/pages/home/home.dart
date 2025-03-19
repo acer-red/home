@@ -43,17 +43,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // @override
-  // void initState() {
-  //   super.initState();
-  //   Http().userInfo().then((onValue) {
-  //     if (onValue.isOK) {
-  //     } else {
-  //       showMsg(onValue.msg);
-  //     }
-  //   });
-  // }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

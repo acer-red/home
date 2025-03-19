@@ -147,7 +147,7 @@ class _Login extends State<Login> {
         .then((value) {
           if (value.isOK) {
             if (mounted) {
-              return Navigator.of(context).pop(value);
+              return Navigator.of(context).pop(value.isOK);
             }
           } else {
             prompt = value.msg;
@@ -344,7 +344,6 @@ class _Login extends State<Login> {
         )
         .then((value) {
           if (value.isOK) {
-
             if (mounted) {
               Navigator.of(context).pop(true);
             }

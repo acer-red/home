@@ -152,7 +152,7 @@ class _Index extends State<Index> {
   }
 
   dialogLogin() async {
-    final g = await showDialog<ReponsePostUserLogin>(
+    final g = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return Dialog(
@@ -164,7 +164,7 @@ class _Index extends State<Index> {
       return;
     }
     setState(() {
-      isLogin = g.isOK;
+      isLogin = g;
     });
 
     await Http().userInfo().then((onValue) {

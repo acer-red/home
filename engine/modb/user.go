@@ -46,6 +46,7 @@ type RequestUserRegister struct {
 	Email    string `json:"email"`
 	Cookie   Cookie `json:"-"`
 	profile  Profile
+	m        bson.M
 }
 type RequestUserLogin struct {
 	Account  string `json:"account"`
@@ -182,6 +183,21 @@ func (req *RequestUserRegister) BuildProfile() error {
 	req.profile.Avatar = f
 	return nil
 }
+func (req *RequestUserRegister) GetCookie() {
+
+	req.Cookie.setLoginCookie()
+	filter := bson.M{"$or": []bson.M{
+		{"username": req.Username},
+		{"email": req.Email},
+	}}
+	update := bson.D{{Key: "$push", Value: bson.D{{Key: "cookies", Value: req.Cookie}}}}
+	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+}
+
 func (req *RequestUserRegister) Register() (string, error) {
 	var err error
 

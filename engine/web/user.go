@@ -80,6 +80,7 @@ func userRegister(c *gin.Context) {
 		internalServerError(c)
 		return
 	}
+	req.GetCookie()
 
 	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
 	createdData(c, responseOK{ID: id})
