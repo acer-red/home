@@ -9,79 +9,49 @@ import (
 
 	"modb"
 
+	"sys"
 	"web"
 
 	log "github.com/tengfei-xy/go-log"
 	"gopkg.in/yaml.v3"
 )
 
-type App struct {
-	loglevel   int
-	configpath string
-	config     Config
-}
-type Config struct {
-	WS struct {
-		Address     string `yaml:"address"`
-		SslEnable   bool   `yaml:"ssl_enable"`
-		CrtFile     string `yaml:"crt_file"`
-		KeyFile     string `yaml:"key_file"`
-		Port        int    `yaml:"port"`
-		fullAddress string
-	} `yaml:"webserver"`
-	WC struct {
-		AllowOrigin string `yaml:"allow_origin"`
-	} `yaml:"webcors"`
-	DB struct {
-		Address  string `yaml:"address"`
-		Database string `yaml:"database"`
-		Port     int    `yaml:"port"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-	} `yaml:"db"`
-}
-
-var app App
+var app sys.App
 
 func init_flag() {
-	flag.IntVar(&app.loglevel, "v", log.LEVELINFOINT, fmt.Sprintf("日志等级,%d-%d", log.LEVELFATALINT, log.LEVELDEBUG3INT))
-	flag.StringVar(&app.configpath, "c", "config.yaml", "配置文件路径")
+	flag.IntVar(&app.Loglevel, "v", log.LEVELINFOINT, fmt.Sprintf("日志等级,%d-%d", log.LEVELFATALINT, log.LEVELDEBUG3INT))
+	flag.StringVar(&app.Configpath, "c", "config.yaml", "配置文件路径")
 	flag.Parse()
 }
 func init_config() {
 	// 读取配置文件
-	f, err := os.ReadFile(app.configpath)
+	f, err := os.ReadFile(app.Configpath)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = yaml.Unmarshal(f, &app.config)
+	err = yaml.Unmarshal(f, &app.Config)
 	if err != nil {
 		log.Fatalf("读取配置文件失败:%s", err)
 	}
-	if app.config.WS.Port <= 0 {
-		app.config.WS.Port = 21520
+	if app.Config.Web.Server.Port <= 0 {
+		app.Config.Web.Server.Port = 21520
 	}
-
-	if app.config.WS.SslEnable {
-		app.config.WS.fullAddress = fmt.Sprintf("https://%s:%d", app.config.WS.Address, app.config.WS.Port)
-	} else {
-		app.config.WS.fullAddress = fmt.Sprintf("http://%s:%d", app.config.WS.Address, app.config.WS.Port)
-	}
+	app.Config.Web.SetFullAddress()
 
 }
 func init_log() {
-	log.SetLevelInt(app.loglevel)
+	log.SetLevelInt(app.Loglevel)
 	_, g := log.GetLevel()
 	fmt.Printf("日志等级:%s\n", g)
 }
 func init_mongo() {
 	log.Infof("mongo连接中...")
 	str := fmt.Sprintf("mongodb://%s:%s@%s:%d/%s",
-		app.config.DB.User,
-		app.config.DB.Password,
-		app.config.DB.Address,
-		app.config.DB.Port,
-		app.config.DB.Database,
+		app.Config.DB.User,
+		app.Config.DB.Password,
+		app.Config.DB.Address,
+		app.Config.DB.Port,
+		app.Config.DB.Database,
 	)
 	err := modb.Init(str)
 	if err != nil {
@@ -92,18 +62,9 @@ func init_mongo() {
 
 func init_web() {
 
-	log.Infof("API: %s", app.config.WS.fullAddress)
+	log.Infof("API: %s", app.Config.Web.Server.FullAddress)
 	log.Info("启动监听...")
-	log.Debug3f("cors allow origin: %s", app.config.WC.AllowOrigin)
-
-	web.Init(web.Env{
-		CORSAllowOrigin:   app.config.WC.AllowOrigin,
-		FullServerAddress: app.config.WS.fullAddress,
-		SslEnable:         app.config.WS.SslEnable,
-		CrtFile:           app.config.WS.CrtFile,
-		KeyFile:           app.config.WS.KeyFile,
-		Port:              app.config.WS.Port,
-	})
+	web.Init(app.Config.Web)
 }
 func quit() {
 	// 创建一个通道来接收信号通知

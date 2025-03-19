@@ -1,4 +1,4 @@
-import 'package:acer_red/pages/user/user.dart';
+import 'package:acer_red/pages/login/login.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:acer_red/pages/product/entanglement.dart';
@@ -8,20 +8,56 @@ import 'package:acer_red/pages/product/whispering_time.dart';
 import 'package:acer_red/env/config.dart';
 import 'package:acer_red/env/ui.dart';
 import 'package:acer_red/pages/home/home.dart';
+import 'package:acer_red/services/http/base.dart';
+import 'package:acer_red/services/http/http.dart';
 
-class Home extends StatefulWidget {
-  const Home({super.key});
-
+class Index extends StatefulWidget {
+  const Index({super.key});
+  // const Index({Key? key, this.userData}) : super(key: key);
   @override
-  State<Home> createState() => _Home();
+  State<Index> createState() => _Index();
 }
 
-class _Home extends State<Home> {
+class _Index extends State<Index> {
   final ScrollController _scrollController = ScrollController();
   double height = 700;
   final double titlesize = 56.0;
+  bool isLogin = false;
+  late User user;
   final List<String> productName = ['枫迹', '深度交流', '组织信息', '关系通讯'];
   int shortWidth = 400;
+
+  @override
+  void initState() {
+    super.initState();
+    autologin();
+  }
+
+  @override
+  void didUpdateWidget(covariant Index oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当父 Widget 传递的数据发生变化时重新赋值
+    autologin();
+  }
+
+  autologin() async {
+    Http().userAutoLogin().then((onValue) {
+      if (onValue.isNotOK) {
+        return;
+      }
+
+      setState(() {
+        user = User(
+          username: onValue.username,
+          email: onValue.email,
+          crtime: onValue.crtime,
+          profile: onValue.profile,
+        );
+        isLogin = true;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -32,7 +68,7 @@ class _Home extends State<Home> {
         actions:
             MediaQuery.of(context).size.width > shortWidth
                 ? null
-                : [loginIcon(), menuIcon()],
+                : [isLogin ? avatarIcon() : loginIcon(), menuIcon()],
         title:
             MediaQuery.of(context).size.width < shortWidth
                 ? null
@@ -55,7 +91,7 @@ class _Home extends State<Home> {
                             );
                           }).toList(),
                     ),
-                    loginIcon(),
+                    isLogin ? avatarIcon() : loginIcon(),
                   ],
                 ),
         backgroundColor: Colors.white,
@@ -75,24 +111,48 @@ class _Home extends State<Home> {
     );
   }
 
+  Widget avatarIcon() {
+    final String url = "${HTTPConfig.imageURL}/${user.profile.avatar}";
+    return Padding(
+      padding: const EdgeInsets.all(2.0),
+      child: MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+        enterHomePage();
+        },
+        child: CircleAvatar(
+        backgroundImage: NetworkImage(url),
+        radius: 15, // Adjust the radius to make the avatar smaller
+        ),
+      ),
+      ),
+    );
+  }
+
   Widget loginIcon() {
     return IconButton(
       icon: Icon(Icons.person),
       onPressed: () {
-        Settings().getLogin() ? enterHomePage() : dialogLogin();
+        isLogin ? enterHomePage() : dialogLogin();
       },
     );
   }
 
-  enterHomePage() {
-    Navigator.push(
+  enterHomePage() async {
+    final b = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (context) => HomePage()),
+      MaterialPageRoute(builder: (context) => HomePage(user)),
     );
+    if (b != null) {
+      setState(() {
+        isLogin = b;
+      });
+    }
   }
 
-  dialogLogin() {
-    showDialog(
+  dialogLogin() async {
+    final g = await showDialog<ReponsePostUserLogin>(
       context: context,
       builder: (BuildContext context) {
         return Dialog(
@@ -100,9 +160,28 @@ class _Home extends State<Home> {
         );
       },
     );
+    if (g == null) {
+      return;
+    }
+    setState(() {
+      isLogin = g.isOK;
+    });
+
+    await Http().userInfo().then((onValue) {
+      if (onValue.isNotOK) {
+        return;
+      }
+      setState(() {
+        user = User(
+          username: onValue.username,
+          email: onValue.email,
+          crtime: onValue.crtime,
+          profile: onValue.profile,
+        );
+        isLogin = true;
+      });
+    });
   }
-
-
 
   Widget menuIcon() {
     return PopupMenuButton<int>(

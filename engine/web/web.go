@@ -2,48 +2,59 @@ package web
 
 import (
 	"fmt"
+	"sys"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
 
-type Env struct {
-	FullServerAddress string
-	SslEnable         bool
-	CrtFile           string
-	KeyFile           string
-	Port              int
-	CORSAllowOrigin   string
-}
-
-func Init(env Env) {
+func Init(env sys.Web) {
 	gin.SetMode(gin.ReleaseMode)
 	g := gin.Default()
 
 	// 检查请求头以验证用户
 	// g.Use(modb.ExistUser())
 	g.Use(setEnv(env))
-	g.Use(cors(env.CORSAllowOrigin))
-	// g.Use(cors.New(defaultCors()))
-	RouteUser(g)
 
-	if env.SslEnable {
-		err := g.RunTLS(fmt.Sprintf(":%d", env.Port), env.CrtFile, env.KeyFile)
+	if env.CORS.Enable {
+		log.Infof("Enable CORS, Origin:%s", env.CORS.AllowOrigin)
+		g.Use(cors(env.CORS.AllowOrigin))
+	} else {
+
+	}
+
+	RouteUser(g)
+	RouterImageGet(g)
+	if env.Server.SslEnable {
+		err := g.RunTLS(fmt.Sprintf(":%d", env.Server.Port), env.Server.CrtFile, env.Server.KeyFile)
 		if err != nil {
 			log.Fatal(err)
 		}
 		return
 	} else {
-		err := g.Run(fmt.Sprintf(":%d", env.Port))
+		err := g.Run(fmt.Sprintf(":%d", env.Server.Port))
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
 }
-func setEnv(env Env) gin.HandlerFunc {
+func setEnv(env sys.Web) gin.HandlerFunc {
 
-	return func(g *gin.Context) {
-		g.Set("env", env)
+	return func(c *gin.Context) {
+		c.Set("env", env)
+		c.Set("cors_origin", "")
 	}
+}
+
+func setCookie(c *gin.Context, key, value string, ex int) {
+	c.SetCookie(
+		key,                               // Cookie 的名称
+		value,                             // Cookie 的值
+		ex,                                // Cookie 的过期时间 (Unix 时间戳)
+		"/",                               // Cookie 的路径 (通常设置为 "/")
+		c.MustGet("cors_origin").(string), // Cookie 的域名 (留空表示当前域名)
+		false,                             // 是否只允许 HTTPS 访问
+		false,                             // 是否禁止 JavaScript 访问 (HttpOnly)
+	)
 }

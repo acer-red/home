@@ -1,5 +1,14 @@
 enum Method { get, post, put, delete }
 
+class HTTPConfig {
+  static const String serverAddress = String.fromEnvironment(
+    'SERVER_ADDRESS',
+    defaultValue: 'https://acer.red',
+  );
+  static  final String imageURL = '$serverAddress/image';
+}
+
+
 class Basic {
   int err;
   String msg;
@@ -10,3 +19,4 @@ class Basic {
   bool get isOK => err == 0;
   
 }
+

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Image logo() {
   return Image.asset(
@@ -14,17 +14,27 @@ Image logo() {
 Widget blackTextButton(
   BuildContext context,
   Function() func, {
-
+  Widget? icon,
+  Color? iconColor,
   required String text,
 }) {
-  return TextButton(
+  return TextButton.icon(
     style: ButtonStyle(
       backgroundColor: WidgetStateProperty.all(
         Theme.of(context).colorScheme.primary,
       ),
     ),
     onPressed: func,
-    child: Text(
+    icon:
+        icon == null
+            ? null
+            : IconTheme(
+              data: IconThemeData(
+                color: iconColor ?? Theme.of(context).colorScheme.secondary,
+              ),
+              child: icon,
+            ),
+    label: Text(
       text,
       style: TextStyle(color: Theme.of(context).colorScheme.secondary),
     ),
@@ -44,5 +54,15 @@ void showMsg(String msg) {
       duration: Duration(seconds: 2),
       backgroundColor: Theme.of(navigatorKey.currentContext!).primaryColor,
     ),
+  );
+}
+
+Divider divider() {
+  return Divider(
+    height: 20, // 分割线高度 (包含上下间距)
+    thickness: 1, // 分割线粗细
+    indent: 20, // 左侧缩进
+    endIndent: 20, // 右侧缩进
+    color: Colors.grey[200], // 分割线颜色
   );
 }

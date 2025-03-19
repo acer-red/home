@@ -1,7 +1,9 @@
 package web
 
 import (
+	"bytes"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
@@ -57,11 +59,11 @@ func msgCreated(msg ...string) message {
 //		return m
 //	}
 
-// func ok(g *gin.Context) {
-// 	d := msgOK()
-// 	log.Debug3f("\n%s", sys.JsonPrettyPrint(d))
-// 	g.JSON(http.StatusOK, d)
-// }
+func ok(g *gin.Context) {
+	d := msgOK()
+	log.Debug3j(d)
+	g.JSON(http.StatusOK, d)
+}
 
 func okData(g *gin.Context, obj any) {
 	d := msgOK().setData(obj)
@@ -69,23 +71,23 @@ func okData(g *gin.Context, obj any) {
 	g.JSON(http.StatusOK, d)
 }
 
-// func okImage(g *gin.Context, data bytes.Buffer) {
-// 	name := g.Param("file")
-// 	if !strings.Contains(name, ".") {
-// 		badRequest(g)
-// 		return
-// 	}
-// 	fotmat := strings.ToLower(strings.Split(name, ".")[1])
-// 	switch fotmat {
-// 	case "png":
-// 		g.Data(http.StatusOK, "image/png", data.Bytes())
-// 	case "jpg":
-// 	case "jpeg":
-// 		g.Data(http.StatusOK, "image/jpeg", data.Bytes())
-// 	default:
-// 		log.Errorf("未知图片类型,%s", fotmat)
-// 	}
-// }
+func okImage(g *gin.Context, data bytes.Buffer) {
+	name := g.Param("file")
+	if !strings.Contains(name, ".") {
+		badRequest(g)
+		return
+	}
+	fotmat := strings.ToLower(strings.Split(name, ".")[1])
+	switch fotmat {
+	case "png":
+		g.Data(http.StatusOK, "image/png", data.Bytes())
+	case "jpg":
+	case "jpeg":
+		g.Data(http.StatusOK, "image/jpeg", data.Bytes())
+	default:
+		log.Errorf("未知图片类型,%s", fotmat)
+	}
+}
 
 func badRequest(g *gin.Context) {
 	g.AbortWithStatus(http.StatusBadRequest)
@@ -106,6 +108,6 @@ func createdData(g *gin.Context, obj any) {
 	g.JSON(http.StatusCreated, d)
 }
 
-// func unauthorized(g *gin.Context) {
-// 	g.AbortWithStatus(http.StatusUnauthorized)
-// }
+func unauthorized(g *gin.Context) {
+	g.AbortWithStatus(http.StatusUnauthorized)
+}

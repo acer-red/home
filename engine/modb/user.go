@@ -19,13 +19,54 @@ type Cookie struct {
 	CRTime time.Time `bson:"crtime"`
 	EXTime time.Time `bson:"extime"`
 }
+type Profile struct {
+	Avatar   string `json:"avatar"`
+	Nickname string `json:"nickname"`
+}
+type ResponseGetUserInfo struct {
+	ID       string    `json:"id"`
+	Username string    `json:"username"`
+	Email    string    `json:"email"`
+	Profile  Profile   `json:"profile"`
+	CRTime   time.Time `json:"crtime"`
+}
+type User struct {
+	UOID     primitive.ObjectID `bson:"_id" json:"-"`
+	ID       string             `bson:"id" json:"-"`
+	Username string             `bson:"username" json:"username"`
+	Email    string             `bson:"email" json:"email"`
+	CRTime   time.Time          `bson:"crtime" json:"crtime"`
+	Profile  Profile            `bson:"profile" json:"profile"`
+	// UTime    time.Time       `bson:"uptime"`
+	Cookies []Cookie `bson:"cookies" json:"-"`
+}
 type RequestUserRegister struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
 	Cookie   Cookie `json:"-"`
+	profile  Profile
+}
+type RequestUserLogin struct {
+	Account  string `json:"account"`
+	Password string `json:"password"`
+	m        bson.M
+	Cookie   Cookie `json:"-"`
+}
+type RequestPutUserInfo struct {
+	Nickname string             `json:"nickname"`
+	Password string             `json:"password"`
+	UOID     primitive.ObjectID `json:"-"`
 }
 
+func (c *Cookie) setLoginCookie() {
+	c.Key = "login"
+	c.Value = sys.CreateUUID()
+	c.CRTime = time.Now()
+	c.EXTime = time.Now().AddDate(0, 1, 0)
+}
+
+// 用户注册
 func (req *RequestUserRegister) checkUser() bool {
 	username := req.Username
 	if username == "" || len(username) > 20 {
@@ -122,21 +163,46 @@ func (req *RequestUserRegister) Find() (bool, error) {
 	}
 	return false, nil
 }
-func (req *RequestUserRegister) Register() (string, error) {
+func (req *RequestUserRegister) BuildProfile() error {
 
+	// 用户名，暂时只支持中文
+	req.profile.Nickname = sys.RandomNickname()
+
+	// 根据用户名创建随机头像
+	str := req.Username
+	if str == "" {
+		str = req.Email
+	}
+	// 返回文件名
+	f, err := ImageCreateRandomAvatar(str)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.profile.Avatar = f
+	return nil
+}
+func (req *RequestUserRegister) Register() (string, error) {
 	var err error
+
 	req.Password, err = sys.HashPassword(req.Password)
 	if err != nil {
 		log.Error(err)
 		return "", err
 	}
 	id := sys.CreateUUID()
-
+	p := bson.D{
+		{Key: "nickname", Value: req.profile.Nickname},
+		{Key: "avatar", Value: req.profile.Avatar},
+	}
 	m := bson.D{
+		{Key: "id", Value: id},
 		{Key: "username", Value: req.Username},
 		{Key: "password", Value: req.Password},
 		{Key: "email", Value: req.Email},
-		{Key: "id", Value: id},
+		{Key: "profile", Value: p},
+		{Key: "crtime", Value: time.Now()},
+		{Key: "uptime", Value: time.Now()},
 		{Key: "cookies", Value: []Cookie{
 			req.Cookie,
 		}},
@@ -146,22 +212,11 @@ func (req *RequestUserRegister) Register() (string, error) {
 		log.Error(err)
 		return "", err
 	}
-	req.Cookie.new()
+	req.Cookie.setLoginCookie()
 	return id, nil
 }
-func (c *Cookie) new() {
-	c.Key = "login"
-	c.Value = sys.CreateUUID()
-	c.CRTime = time.Now()
-	c.EXTime = time.Now().AddDate(0, 1, 0)
-}
 
-type RequestUserLogin struct {
-	Account  string `json:"account"`
-	Password string `json:"password"`
-	m        bson.M
-	Cookie   Cookie `json:"-"`
-}
+// 用户登陆
 
 func (req *RequestUserLogin) Check() bool {
 	// 检查用户名
@@ -193,11 +248,19 @@ func (req *RequestUserLogin) Find() (bool, error) {
 func (req *RequestUserLogin) ComparePassword() error {
 	return sys.ComparePassword(req.m["password"].(string), req.Password)
 }
-func (req *RequestUserLogin) GetID() (string, error) {
-	id := req.m["id"].(string)
-	return id, nil
+func (req *RequestUserLogin) GetInfo() ResponseGetUserInfo {
+	res := ResponseGetUserInfo{
+		ID:       req.m["id"].(string),
+		Username: req.m["username"].(string),
+		Email:    req.m["email"].(string),
+		CRTime:   req.m["crtime"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: req.m["profile"].(bson.M)["nickname"].(string),
+			Avatar:   req.m["profile"].(bson.M)["avatar"].(string),
+		},
+	}
+	return res
 }
-
 func (req *RequestUserLogin) GetCookie() {
 	cookies := req.m["cookies"].(primitive.A)
 
@@ -212,7 +275,7 @@ func (req *RequestUserLogin) GetCookie() {
 		req.Cookie.Key = c["key"].(string)
 		return
 	}
-	req.Cookie.new()
+	req.Cookie.setLoginCookie()
 	filter := bson.M{"$or": []bson.M{
 		{"username": req.Account},
 		{"email": req.Account},
@@ -225,28 +288,9 @@ func (req *RequestUserLogin) GetCookie() {
 	}
 }
 
-type RequestUserLogout struct {
-	ID   string             `json:"id"`
-	UOID primitive.ObjectID `json:"-" bson:"_id"`
-}
-
-func (req *RequestUserLogout) Check() bool {
-	return req.ID != ""
-}
-func (req *RequestUserLogout) Find() (bool, error) {
-	filter := bson.M{"id": req.ID}
-	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&req)
-	if err == mongo.ErrNoDocuments {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-func (req *RequestUserLogout) DeleteCookie() error {
-	filter := bson.M{"_id": req.UOID}
+// 用户信息
+func (u *User) DeleteCookie() error {
+	filter := bson.M{"_id": u.UOID}
 	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "cookies", Value: bson.M{"key": "login"}}}}}
 	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
 	if err != nil {
@@ -254,4 +298,51 @@ func (req *RequestUserLogout) DeleteCookie() error {
 		return err
 	}
 	return nil
+}
+func (req *RequestPutUserInfo) Update() error {
+
+	var err error
+
+	filter := bson.M{"_id": req.UOID}
+
+	update := bson.D{{Key: "$set", Value: bson.D{}}}
+	if req.Nickname != "" {
+		update[0].Value = append(update[0].Value.(bson.D), bson.E{Key: "profile.nickname", Value: req.Nickname})
+	}
+
+	if req.Password != "" {
+		req.Password, err = sys.HashPassword(req.Password)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		update[0].Value = append(update[0].Value.(bson.D), bson.E{Key: "password", Value: req.Password})
+	}
+
+	if len(update[0].Value.(bson.D)) == 0 {
+		return nil
+	}
+	update[0].Value = append(update[0].Value.(bson.D), bson.E{Key: "uptime", Value: time.Now()})
+
+	if _, err = db.Collection("user").UpdateOne(context.TODO(), filter, update); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+
+func GetUser(cookie string) (User, bool, error) {
+	var user User
+	filter := bson.M{"cookies": bson.M{"$elemMatch": bson.M{"key": "login"}}}
+	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return User{}, false, nil
+		}
+		log.Error(err)
+
+		return User{}, false, err
+	}
+	return user, true, nil
+
 }

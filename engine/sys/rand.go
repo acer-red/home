@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	rs "github.com/acer-red/randResources"
 	"github.com/google/uuid"
 )
 
@@ -13,4 +14,14 @@ func CreateUUID() string {
 		fmt.Println(err)
 	}
 	return strings.ReplaceAll(u.String(), "-", "")
+}
+func RandomNickname() string {
+	return rs.Text()
+}
+func RandomAvatar(random string) []byte {
+	i, err := rs.BuildImage(random)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return i.Bytes()
 }
