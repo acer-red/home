@@ -303,6 +303,9 @@ func (req *RequestUserLogin) GetCookie() {
 		return
 	}
 }
+func (req *RequestUserLogin) GetID() string {
+	return req.m["id"].(string)
+}
 
 // 用户信息
 func (u *User) DeleteCookie() error {

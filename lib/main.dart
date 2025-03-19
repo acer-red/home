@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:acer_red/pages/index.dart';
 import 'package:acer_red/env/ui.dart';
-import 'package:acer_red/env/config.dart';
+import 'package:acer_red/services/sp/sp.dart';
 
 void main() {
-  Settings().init();
+  SP().init();
   runApp(const MyApp());
 }
 

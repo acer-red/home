@@ -16,10 +16,20 @@ class RequestPostUserLogin {
 }
 
 class ReponsePostUserLogin extends Basic {
-  ReponsePostUserLogin({required super.err, required super.msg});
+  final String id;
+
+  ReponsePostUserLogin({
+    required super.err,
+    required super.msg,
+    required this.id,
+  });
 
   factory ReponsePostUserLogin.fromJson(Map<String, dynamic> g) {
-    return ReponsePostUserLogin(err: g['err'], msg: g['msg']);
+    return ReponsePostUserLogin(
+      err: g['err'],
+      msg: g['msg'],
+      id: g['data'] != null ? g['data']['id'] : '',
+    );
   }
 }
 
@@ -142,6 +152,8 @@ class ReponsePutUserInfo extends Basic {
 }
 
 class Http {
+  final String serverAddress = HTTPConfig.serverAddress;
+
   Future<T> _handleRequest<T>(
     Method method,
     Uri u,
@@ -157,7 +169,7 @@ class Http {
     if (client is BrowserClient) {
       client.withCredentials = true;
     }
-    headers = {'Cookie': 'login=0195a9de270c7d98b93754f392b59da9'};
+
     try {
       switch (method) {
         case Method.get:
@@ -207,7 +219,7 @@ class Http {
 
   Future<ReponsePostUserLogin> userLogin(RequestPostUserLogin req) async {
     final path = "/api/v1/user/login";
-    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    final uri = Uri.parse(serverAddress + path);
     return _handleRequest(
       Method.post,
       uri,
@@ -218,7 +230,7 @@ class Http {
 
   Future<ReponsePostUserAutoLogin> userAutoLogin() async {
     final path = "/api/v1/user/autologin";
-    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    final uri = Uri.parse(serverAddress + path);
     return _handleRequest(
       Method.post,
       uri,
@@ -228,7 +240,7 @@ class Http {
 
   Future<ReponsePostUserRegister> userRegister(RequestPostUserRegister req) {
     final path = "/api/v1/user/register";
-    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    final uri = Uri.parse(serverAddress + path);
 
     return _handleRequest(
       Method.post,
@@ -240,7 +252,7 @@ class Http {
 
   Future<ReponsePostUserLogout> userLogout() {
     final path = "/api/v1/user/logout";
-    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    final uri = Uri.parse(serverAddress + path);
 
     return _handleRequest(
       Method.post,
@@ -251,7 +263,7 @@ class Http {
 
   Future<ReponseGetUserInfo> userInfo() async {
     final path = "/api/v1/user/info";
-    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    final uri = Uri.parse(serverAddress + path);
 
     return _handleRequest(
       Method.get,
@@ -262,7 +274,7 @@ class Http {
 
   Future<ReponsePutUserInfo> userUpadte(RequestPutUserInfo req) async {
     final path = "/api/v1/user/info";
-    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    final uri = Uri.parse(serverAddress + path);
 
     return _handleRequest(
       Method.put,
@@ -277,10 +289,16 @@ class Http {
     switch (statusCode) {
       case 400:
         msg = "用户名或密码错误";
+        break;
+      case 409:
+        msg = "已存在";
+        break;
       case 500:
         msg = "服务器错误";
+        break;
       default:
         msg = "未知错误，稍后重试";
+        break;
     }
     return msg;
   }

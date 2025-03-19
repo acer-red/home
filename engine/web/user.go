@@ -92,7 +92,9 @@ func userAutoLogin(c *gin.Context) {
 }
 func userLogin(c *gin.Context) {
 	var req modb.RequestUserLogin
-
+	type response struct {
+		ID string `json:"id"`
+	}
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
 		return
@@ -122,7 +124,8 @@ func userLogin(c *gin.Context) {
 
 	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
 
-	ok(c)
+	id := req.GetInfo().ID
+	okData(c, response{ID: id})
 }
 func userLogout(c *gin.Context) {
 

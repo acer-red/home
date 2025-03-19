@@ -12,8 +12,6 @@ func Init(env sys.Web) {
 	gin.SetMode(gin.ReleaseMode)
 	g := gin.Default()
 
-	// 检查请求头以验证用户
-	// g.Use(modb.ExistUser())
 	g.Use(setEnv(env))
 
 	if env.CORS.Enable {
@@ -23,8 +21,11 @@ func Init(env sys.Web) {
 
 	}
 
+	// 设定路由
+	RouteFeedback(g)
 	RouteUser(g)
 	RouterImageGet(g)
+
 	if env.Server.SslEnable {
 		err := g.RunTLS(fmt.Sprintf(":%d", env.Server.Port), env.Server.CrtFile, env.Server.KeyFile)
 		if err != nil {
