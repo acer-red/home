@@ -38,8 +38,8 @@ class Settings {
 }
 
 class Profile {
-  final String nickname;
-  final String avatar;
+  String nickname;
+  String avatar;
   Profile({required this.nickname, required this.avatar});
   factory Profile.fromJson(Map<String, dynamic> g) {
     return Profile(nickname: g['nickname'], avatar: g['avatar']);

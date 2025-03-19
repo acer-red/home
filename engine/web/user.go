@@ -17,7 +17,8 @@ func RouteUser(c *gin.Engine) {
 			v1User.Use(authMiddleware())
 			v1User.POST("/autologin", userAutoLogin)
 			v1User.POST("/logout", userLogout)
-			v1User.GET("/info", userInfo)
+			v1User.GET("/info", getUserInfo)
+			v1User.PUT("/info", putUserInfo)
 		}
 	}
 
@@ -133,40 +134,22 @@ func userLogout(c *gin.Context) {
 	setCookie(c, "login", "", 0)
 	okData(c, nil)
 }
-func userInfo(c *gin.Context) {
+func getUserInfo(c *gin.Context) {
 	user := c.MustGet("user").(modb.User)
 	okData(c, user)
-	// var req modb.RequestUserInfo
+}
+func putUserInfo(c *gin.Context) {
 
-	// type response struct {
-	// 	ID       string `json:"id"`
-	// 	Username string `json:"username"`
-	// 	Email    string `json:"email"`
-	// }
+	var req modb.RequestPutUserInfo
+	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+		badRequest(c)
+		return
+	}
+	req.UOID = c.MustGet("user").(modb.User).UOID
 
-	// if err := c.ShouldBindQuery(&req); err != nil {
-	// 	badRequest(c)
-	// 	return
-	// }
-
-	// if ok := req.Check(); !ok {
-	// 	badRequest(c)
-	// 	return
-	// }
-
-	// if ok, err := req.Find(); err != nil {
-	// 	internalServerError(c)
-	// 	return
-	// } else if !ok {
-	// 	notFound(c)
-	// 	return
-	// }
-
-	// data := response{
-	// 	ID:       req.ID,
-	// 	Username: req.Username,
-	// 	Email:    req.Email,
-	// }
-
-	// okData(c, data)
+	if err := req.Update(); err != nil {
+		internalServerError(c)
+		return
+	}
+	ok(c)
 }

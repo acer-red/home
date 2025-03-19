@@ -118,6 +118,29 @@ class ReponsePostUserAutoLogin extends Basic {
   }
 }
 
+class RequestPutUserInfo {
+  String? nickname;
+  String? password;
+  RequestPutUserInfo({this.nickname, this.password});
+  Map<String, dynamic> tojson() {
+    final Map<String, dynamic> data = <String, dynamic>{};
+    if (nickname != null) {
+      data['nickname'] = nickname;
+    }
+    if (password != null) {
+      data['password'] = password;
+    }
+    return data;
+  }
+}
+
+class ReponsePutUserInfo extends Basic {
+  ReponsePutUserInfo({required super.err, required super.msg});
+  factory ReponsePutUserInfo.fromJson(Map<String, dynamic> g) {
+    return ReponsePutUserInfo(err: g['err'], msg: g['msg']);
+  }
+}
+
 class Http {
   Future<T> _handleRequest<T>(
     Method method,
@@ -234,6 +257,18 @@ class Http {
       Method.get,
       uri,
       (g) => ReponseGetUserInfo.fromJson(g),
+    );
+  }
+
+  Future<ReponsePutUserInfo> userUpadte(RequestPutUserInfo req) async {
+    final path = "/api/v1/user/info";
+    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+
+    return _handleRequest(
+      Method.put,
+      uri,
+      (g) => ReponsePutUserInfo.fromJson(g),
+      data: req.tojson(),
     );
   }
 
