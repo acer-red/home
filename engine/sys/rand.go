@@ -18,3 +18,10 @@ func CreateUUID() string {
 func RandomNickname() string {
 	return rs.Text()
 }
+func RandomAvatar(random string) []byte {
+	i, err := rs.BuildImage(random)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return i.Bytes()
+}

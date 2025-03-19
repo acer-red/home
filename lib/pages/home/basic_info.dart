@@ -1,8 +1,10 @@
 import 'package:acer_red/env/ui.dart';
+import 'package:acer_red/env/config.dart';
 import 'package:flutter/material.dart';
 
 class BasicInfo extends StatefulWidget {
-  const BasicInfo({super.key});
+  final User user;
+  const BasicInfo(this.user, {super.key});
 
   @override
   State<BasicInfo> createState() => _BasicInfo();
@@ -11,6 +13,13 @@ class BasicInfo extends StatefulWidget {
 class _BasicInfo extends State<BasicInfo> {
   bool isEditMode = false;
   TextEditingController nickName = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    nickName.text = widget.user.profile.nickname;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -26,12 +35,19 @@ class _BasicInfo extends State<BasicInfo> {
                     width: 5 * 24,
                     child: TextField(
                       controller: nickName,
-                      decoration: InputDecoration(
-                        hintText: nickName.text.isEmpty ? "未设置" : '',
+                      decoration: const InputDecoration(
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.black, width: 0.5),
+                        borderRadius: BorderRadius.all(Radius.circular(5)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.black, width: 1),
+                        borderRadius: BorderRadius.all(Radius.circular(5)),
+                      ),
                       ),
                     ),
                   )
-                  : Text(nickName.text.isEmpty ? "未设置" : ''),
+                  : Text(nickName.text),
             ],
           ),
           Padding(

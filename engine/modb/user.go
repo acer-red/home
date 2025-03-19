@@ -19,11 +19,33 @@ type Cookie struct {
 	CRTime time.Time `bson:"crtime"`
 	EXTime time.Time `bson:"extime"`
 }
+type Profile struct {
+	Avatar   string `json:"avatar"`
+	Nickname string `json:"nickname"`
+}
+type User struct {
+	UOID     primitive.ObjectID `bson:"_id" json:"-"`
+	ID       string             `bson:"id" json:"-"`
+	Username string             `bson:"username" json:"username"`
+	Email    string             `bson:"email" json:"email"`
+	CRTime   time.Time          `bson:"crtime" json:"crtime"`
+	Profile  Profile            `bson:"profile" json:"profile"`
+	// UTime    time.Time       `bson:"uptime"`
+	Cookies []Cookie `bson:"cookies" json:"-"`
+}
 type RequestUserRegister struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
 	Cookie   Cookie `json:"-"`
+	profile  Profile
+}
+type ResponseUserInfo struct {
+	ID       string    `json:"id"`
+	Username string    `json:"username"`
+	Email    string    `json:"email"`
+	Profile  Profile   `json:"profile"`
+	CRTime   time.Time `json:"crtime"`
 }
 
 func (req *RequestUserRegister) checkUser() bool {
@@ -122,22 +144,48 @@ func (req *RequestUserRegister) Find() (bool, error) {
 	}
 	return false, nil
 }
-func (req *RequestUserRegister) Register() (string, error) {
 
+// 创建随机用户信息
+func (req *RequestUserRegister) BuildProfile() error {
+
+	// 用户名，暂时只支持中文
+	req.profile.Nickname = sys.RandomNickname()
+
+	// 根据用户名创建随机头像
+	str := req.Username
+	if str == "" {
+		str = req.Email
+	}
+	// 返回文件名
+	f, err := ImageCreateRandomAvatar(str)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	req.profile.Avatar = f
+	return nil
+}
+func (req *RequestUserRegister) Register() (string, error) {
 	var err error
+
 	req.Password, err = sys.HashPassword(req.Password)
 	if err != nil {
 		log.Error(err)
 		return "", err
 	}
 	id := sys.CreateUUID()
-
+	p := bson.D{
+		{Key: "nickname", Value: req.profile.Nickname},
+		{Key: "avatar", Value: req.profile.Avatar},
+	}
 	m := bson.D{
+		{Key: "id", Value: id},
 		{Key: "username", Value: req.Username},
-		{Key: "nickname", Value: sys.RandomNickname()},
 		{Key: "password", Value: req.Password},
 		{Key: "email", Value: req.Email},
-		{Key: "id", Value: id},
+		{Key: "profile", Value: p},
+		{Key: "crtime", Value: time.Now()},
+		{Key: "uptime", Value: time.Now()},
 		{Key: "cookies", Value: []Cookie{
 			req.Cookie,
 		}},
@@ -194,9 +242,18 @@ func (req *RequestUserLogin) Find() (bool, error) {
 func (req *RequestUserLogin) ComparePassword() error {
 	return sys.ComparePassword(req.m["password"].(string), req.Password)
 }
-func (req *RequestUserLogin) GetID() (string, error) {
-	id := req.m["id"].(string)
-	return id, nil
+func (req *RequestUserLogin) GetInfo() ResponseUserInfo {
+	res := ResponseUserInfo{
+		ID:       req.m["id"].(string),
+		Username: req.m["username"].(string),
+		Email:    req.m["email"].(string),
+		CRTime:   req.m["crtime"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: req.m["profile"].(bson.M)["nickname"].(string),
+			Avatar:   req.m["profile"].(bson.M)["avatar"].(string),
+		},
+	}
+	return res
 }
 
 func (req *RequestUserLogin) GetCookie() {
@@ -227,27 +284,11 @@ func (req *RequestUserLogin) GetCookie() {
 }
 
 type RequestUserLogout struct {
-	ID   string             `json:"id"`
 	UOID primitive.ObjectID `json:"-" bson:"_id"`
 }
 
-func (req *RequestUserLogout) Check() bool {
-	return req.ID != ""
-}
-func (req *RequestUserLogout) Find() (bool, error) {
-	filter := bson.M{"id": req.ID}
-	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&req)
-	if err == mongo.ErrNoDocuments {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-func (req *RequestUserLogout) DeleteCookie() error {
-	filter := bson.M{"_id": req.UOID}
+func (u *User) DeleteCookie() error {
+	filter := bson.M{"_id": u.UOID}
 	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "cookies", Value: bson.M{"key": "login"}}}}}
 	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
 	if err != nil {
@@ -255,4 +296,20 @@ func (req *RequestUserLogout) DeleteCookie() error {
 		return err
 	}
 	return nil
+}
+
+func GetUser(cookie string) (User, bool, error) {
+	var user User
+	filter := bson.M{"cookies": bson.M{"$elemMatch": bson.M{"key": "login"}}}
+	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return User{}, false, nil
+		}
+		log.Error(err)
+
+		return User{}, false, err
+	}
+	return user, true, nil
+
 }

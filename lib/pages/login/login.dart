@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:acer_red/env/ui.dart';
 import 'package:acer_red/services/http/http.dart';
-import 'package:acer_red/env/config.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -147,10 +146,8 @@ class _Login extends State<Login> {
         .userLogin(RequestPostUserLogin(account: account, password: password))
         .then((value) {
           if (value.isOK) {
-            Settings().setLogin(true);
-            Settings().setUID(value.id);
             if (mounted) {
-              Navigator.of(context).pop();
+              return Navigator.of(context).pop(value);
             }
           } else {
             prompt = value.msg;
@@ -347,11 +344,9 @@ class _Login extends State<Login> {
         )
         .then((value) {
           if (value.isOK) {
-            Settings().setLogin(true);
-            Settings().setUID(value.id);
 
             if (mounted) {
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(true);
             }
           } else {
             prompt = value.msg;

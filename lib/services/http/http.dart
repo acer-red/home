@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:acer_red/services/http/base.dart';
 import 'package:acer_red/env/env.dart';
+import 'package:acer_red/env/config.dart';
 import 'package:http/browser_client.dart';
 import 'package:http/http.dart' as http;
 
@@ -15,18 +16,10 @@ class RequestPostUserLogin {
 }
 
 class ReponsePostUserLogin extends Basic {
-  final String id;
-  ReponsePostUserLogin({
-    required super.err,
-    required super.msg,
-    required this.id,
-  });
+  ReponsePostUserLogin({required super.err, required super.msg});
+
   factory ReponsePostUserLogin.fromJson(Map<String, dynamic> g) {
-    return ReponsePostUserLogin(
-      err: g['err'],
-      msg: g['msg'],
-      id: g['data'] != null ? g['data']['id'] : '',
-    );
+    return ReponsePostUserLogin(err: g['err'], msg: g['msg']);
   }
 }
 
@@ -62,18 +55,66 @@ class ReponsePostUserRegister extends Basic {
   }
 }
 
-class RequestPostUserLogout {
-  final String id;
-  RequestPostUserLogout({required this.id});
-  Map<String, dynamic> toJson() {
-    return {'id': id};
-  }
-}
-
 class ReponsePostUserLogout extends Basic {
   ReponsePostUserLogout({required super.err, required super.msg});
   factory ReponsePostUserLogout.fromJson(Map<String, dynamic> g) {
     return ReponsePostUserLogout(err: g['err'], msg: g['msg']);
+  }
+}
+
+class ReponseGetUserInfo extends Basic {
+  final String username;
+  final String email;
+  final String crtime;
+  final Profile profile;
+  ReponseGetUserInfo({
+    required super.err,
+    required super.msg,
+    required this.username,
+    required this.email,
+    required this.crtime,
+    required this.profile,
+  });
+  factory ReponseGetUserInfo.fromJson(Map<String, dynamic> g) {
+    return ReponseGetUserInfo(
+      err: g['err'],
+      msg: g['msg'],
+      username: g['data'] != null ? g['data']['username'] : '',
+      email: g['data'] != null ? g['data']['email'] : '',
+      crtime: g['data'] != null ? g['data']['crtime'] : '',
+      profile:
+          g['data'] != null && g['data']['profile'] != null
+              ? Profile.fromJson(g['data']['profile'])
+              : Profile(nickname: '', avatar: ''),
+    );
+  }
+}
+
+class ReponsePostUserAutoLogin extends Basic {
+  final String username;
+  final String email;
+  final String crtime;
+  final Profile profile;
+  ReponsePostUserAutoLogin({
+    required super.err,
+    required super.msg,
+    required this.username,
+    required this.email,
+    required this.crtime,
+    required this.profile,
+  });
+  factory ReponsePostUserAutoLogin.fromJson(Map<String, dynamic> g) {
+    return ReponsePostUserAutoLogin(
+      err: g['err'] ?? 0,
+      msg: g['msg'] ?? '',
+      username: g['data'] != null ? g['data']['username'] : '',
+      email: g['data'] != null ? g['data']['email'] : '',
+      crtime: g['data'] != null ? g['data']['crtime'] : '',
+      profile:
+          g['data'] != null && g['data']['profile'] != null
+              ? Profile.fromJson(g['data']['profile'])
+              : Profile(nickname: '', avatar: ''),
+    );
   }
 }
 
@@ -93,7 +134,7 @@ class Http {
     if (client is BrowserClient) {
       client.withCredentials = true;
     }
-
+    headers = {'Cookie': 'login=0195a9de270c7d98b93754f392b59da9'};
     try {
       switch (method) {
         case Method.get:
@@ -126,13 +167,13 @@ class Http {
         return fromJson({'err': 1, 'msg': getMsg(response.statusCode)});
       }
     } catch (e) {
-      log.e("请求失败:${e.toString()}");
+      log.e("请求失败\n${e.toString()}");
       return fromJson({'err': 1, 'msg': '登陆失败，请稍后尝试'});
     }
     try {
       return fromJson(jsonDecode(response.body));
     } catch (e) {
-      log.e("解析数据失败 \n${response.body}\n${e.toString()}");
+      log.e("解析数据失败 ${e.toString()}\n${response.body}");
       return fromJson({'err': 1, 'msg': '未知错误'});
     }
   }
@@ -143,7 +184,7 @@ class Http {
 
   Future<ReponsePostUserLogin> userLogin(RequestPostUserLogin req) async {
     final path = "/api/v1/user/login";
-    final uri = Uri.parse(serverAddress + path);
+    final uri = Uri.parse(HTTPConfig.serverAddress + path);
     return _handleRequest(
       Method.post,
       uri,
@@ -152,9 +193,19 @@ class Http {
     );
   }
 
+  Future<ReponsePostUserAutoLogin> userAutoLogin() async {
+    final path = "/api/v1/user/autologin";
+    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+    return _handleRequest(
+      Method.post,
+      uri,
+      (g) => ReponsePostUserAutoLogin.fromJson(g),
+    );
+  }
+
   Future<ReponsePostUserRegister> userRegister(RequestPostUserRegister req) {
     final path = "/api/v1/user/register";
-    final uri = Uri.parse(serverAddress + path);
+    final uri = Uri.parse(HTTPConfig.serverAddress + path);
 
     return _handleRequest(
       Method.post,
@@ -164,15 +215,25 @@ class Http {
     );
   }
 
-  Future<ReponsePostUserLogout> userLogout(RequestPostUserLogout req) {
+  Future<ReponsePostUserLogout> userLogout() {
     final path = "/api/v1/user/logout";
-    final uri = Uri.parse(serverAddress + path);
+    final uri = Uri.parse(HTTPConfig.serverAddress + path);
 
     return _handleRequest(
       Method.post,
       uri,
       (g) => ReponsePostUserLogout.fromJson(g),
-      data: req.toJson(),
+    );
+  }
+
+  Future<ReponseGetUserInfo> userInfo() async {
+    final path = "/api/v1/user/info";
+    final uri = Uri.parse(HTTPConfig.serverAddress + path);
+
+    return _handleRequest(
+      Method.get,
+      uri,
+      (g) => ReponseGetUserInfo.fromJson(g),
     );
   }
 
@@ -184,7 +245,7 @@ class Http {
       case 500:
         msg = "服务器错误";
       default:
-        msg = "未知错误";
+        msg = "未知错误，稍后重试";
     }
     return msg;
   }

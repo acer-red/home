@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
           secondary: const Color(0xFFf2efea),
         ),
       ),
-      home: const Home(),
+      home: const Index(),
       builder: (context, child) {
         if (Theme.of(context).platform == TargetPlatform.macOS) {
           return SizedBox(height: 730, child: child);

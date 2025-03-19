@@ -9,7 +9,8 @@ import './setting.dart';
 import './about.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final User user;
+  const HomePage(this.user, {super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -19,14 +20,40 @@ class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   int idx = 0;
-  final List<Widget> _pages = [
-    BasicInfo(),
-    Safe(),
-    SizedBox.shrink(),
-    FeedBack(),
-    Setting(),
-    About(),
-  ];
+  late List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pages = [
+      BasicInfo(widget.user),
+      Safe(),
+      SizedBox.shrink(),
+      FeedBack(),
+      Setting(),
+      About(),
+    ];
+
+    Http().userInfo().then((onValue) {
+      if (onValue.isOK) {
+      } else {
+        showMsg(onValue.msg);
+      }
+    });
+  }
+
+  // @override
+  // void initState() {
+  //   super.initState();
+  //   Http().userInfo().then((onValue) {
+  //     if (onValue.isOK) {
+  //     } else {
+  //       showMsg(onValue.msg);
+  //     }
+  //   });
+  // }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -188,12 +215,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   logout() {
-    final id = Settings().getUID();
-    Http().userLogout(RequestPostUserLogout(id: id)).then((onValue) {
+    Http().userLogout().then((onValue) {
       if (onValue.isOK) {
-        Settings().setLogin(false);
         if (mounted) {
           Navigator.pop(context);
+          Navigator.of(context).pop(false);
         }
       } else {
         showMsg(onValue.msg);

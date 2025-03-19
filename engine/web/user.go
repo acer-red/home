@@ -14,11 +14,36 @@ func RouteUser(c *gin.Engine) {
 		{
 			v1User.POST("/register", userRegister)
 			v1User.POST("/login", userLogin)
+			v1User.Use(authMiddleware())
+			v1User.POST("/autologin", userAutoLogin)
 			v1User.POST("/logout", userLogout)
+			v1User.GET("/info", userInfo)
 		}
 	}
 
 }
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cookie, err := c.Cookie("login")
+		if err != nil {
+			unauthorized(c)
+			return
+		}
+		u, exist, err := modb.GetUser(cookie)
+		if err != nil {
+			internalServerError(c)
+			return
+		}
+		if !exist {
+			unauthorized(c)
+			return
+		}
+
+		c.Set("user", u)
+		c.Next()
+	}
+}
+
 func userRegister(c *gin.Context) {
 
 	var req modb.RequestUserRegister
@@ -43,31 +68,28 @@ func userRegister(c *gin.Context) {
 		conflict(c)
 		return
 	}
+
+	if err := req.BuildProfile(); err != nil {
+		internalServerError(c)
+		return
+	}
+
 	id, err := req.Register()
 	if err != nil {
 		internalServerError(c)
 		return
 	}
 
-	c.SetCookie(
-		req.Cookie.Key,                // Cookie 的名称
-		req.Cookie.Value,              // Cookie 的值
-		int(req.Cookie.EXTime.Unix()), // Cookie 的过期时间 (Unix 时间戳)
-		"/",                           // Cookie 的路径 (通常设置为 "/")
-		"",                            // Cookie 的域名 (留空表示当前域名)
-		false,                         // 是否只允许 HTTPS 访问
-		false,                         // 是否禁止 JavaScript 访问 (HttpOnly)
-	)
-
+	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
 	createdData(c, responseOK{ID: id})
 
 }
+func userAutoLogin(c *gin.Context) {
+	user := c.MustGet("user").(modb.User)
+	okData(c, user)
+}
 func userLogin(c *gin.Context) {
 	var req modb.RequestUserLogin
-
-	type response struct {
-		ID string `json:"id"`
-	}
 
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
@@ -75,7 +97,6 @@ func userLogin(c *gin.Context) {
 	}
 
 	if ok := req.Check(); !ok {
-		log.Warn("check failed")
 		badRequest(c)
 		return
 	}
@@ -84,7 +105,6 @@ func userLogin(c *gin.Context) {
 		internalServerError(c)
 		return
 	} else if !ok {
-		log.Warn("find failed")
 		badRequest(c)
 		return
 	}
@@ -96,60 +116,57 @@ func userLogin(c *gin.Context) {
 		return
 	}
 
-	id, err := req.GetID()
-	if err != nil {
-		internalServerError(c)
-		return
-	}
-
 	req.GetCookie()
-	c.SetCookie(
-		req.Cookie.Key,                // Cookie 的名称
-		req.Cookie.Value,              // Cookie 的值
-		int(req.Cookie.EXTime.Unix()), // Cookie 的过期时间 (Unix 时间戳)
-		"/",                           // Cookie 的路径 (通常设置为 "/")
-		"",                            // Cookie 的域名 (留空表示当前域名)
-		false,                         // 是否只允许 HTTPS 访问
-		false,                         // 是否禁止 JavaScript 访问 (HttpOnly)
-	)
 
-	okData(c, response{ID: id})
+	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
+
+	ok(c)
 }
-
 func userLogout(c *gin.Context) {
-	var req modb.RequestUserLogout
 
-	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		badRequest(c)
-		return
-	}
-
-	if ok := req.Check(); !ok {
-		badRequest(c)
-		return
-	}
-	if ok, err := req.Find(); err != nil {
-		internalServerError(c)
-		return
-	} else if !ok {
-		notFound(c)
-		return
-	}
-
-	if err := req.DeleteCookie(); err != nil {
+	user := c.MustGet("user").(modb.User)
+	if err := user.DeleteCookie(); err != nil {
 		internalServerError(c)
 		return
 	}
 
-	c.SetCookie(
-		"login", // Cookie 的名称
-		"",      // Cookie 的值
-		0,       // Cookie 的过期时间 (Unix 时间戳)
-		"/",     // Cookie 的路径 (通常设置为 "/")
-		"",      // Cookie 的域名 (留空表示当前域名)
-		false,   // 是否只允许 HTTPS 访问
-		false,   // 是否禁止 JavaScript 访问 (HttpOnly)
-	)
-
+	setCookie(c, "login", "", 0)
 	okData(c, nil)
+}
+func userInfo(c *gin.Context) {
+	user := c.MustGet("user").(modb.User)
+	okData(c, user)
+	// var req modb.RequestUserInfo
+
+	// type response struct {
+	// 	ID       string `json:"id"`
+	// 	Username string `json:"username"`
+	// 	Email    string `json:"email"`
+	// }
+
+	// if err := c.ShouldBindQuery(&req); err != nil {
+	// 	badRequest(c)
+	// 	return
+	// }
+
+	// if ok := req.Check(); !ok {
+	// 	badRequest(c)
+	// 	return
+	// }
+
+	// if ok, err := req.Find(); err != nil {
+	// 	internalServerError(c)
+	// 	return
+	// } else if !ok {
+	// 	notFound(c)
+	// 	return
+	// }
+
+	// data := response{
+	// 	ID:       req.ID,
+	// 	Username: req.Username,
+	// 	Email:    req.Email,
+	// }
+
+	// okData(c, data)
 }

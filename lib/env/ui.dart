@@ -15,7 +15,7 @@ Widget blackTextButton(
   BuildContext context,
   Function() func, {
   Widget? icon,
-  Color ? iconColor,
+  Color? iconColor,
   required String text,
 }) {
   return TextButton.icon(
@@ -25,12 +25,15 @@ Widget blackTextButton(
       ),
     ),
     onPressed: func,
-    icon: IconTheme(
-      data: IconThemeData(
-      color:iconColor ?? Theme.of(context).colorScheme.secondary,
-      ),
-      child: icon!,
-    ),
+    icon:
+        icon == null
+            ? null
+            : IconTheme(
+              data: IconThemeData(
+                color: iconColor ?? Theme.of(context).colorScheme.secondary,
+              ),
+              child: icon,
+            ),
     label: Text(
       text,
       style: TextStyle(color: Theme.of(context).colorScheme.secondary),
