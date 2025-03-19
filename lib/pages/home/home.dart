@@ -80,22 +80,26 @@ class _HomePageState extends State<HomePage> {
                         label = '基础信息';
                         iconData = Icons.info_outline;
                         onPressed = () {
-                          if (idx != index) {
-                            setState(() {
-                              idx = index;
-                            });
+                          if (idx == index) {
+                            return;
                           }
+                          setState(() {
+                            idx = index;
+                          });
+                          Navigator.pop(context);
                         };
                         break;
                       case 1:
                         label = '账户安全';
                         iconData = Icons.security;
                         onPressed = () {
-                          if (idx != index) {
-                            setState(() {
-                              idx = index;
-                            });
+                          if (idx == index) {
+                            return;
                           }
+                          setState(() {
+                            idx = index;
+                          });
+                          Navigator.pop(context);
                         };
                         break;
                       case 2:
@@ -112,11 +116,13 @@ class _HomePageState extends State<HomePage> {
                         label = '反馈';
                         iconData = Icons.feedback_outlined;
                         onPressed = () {
-                          if (idx != index) {
-                            setState(() {
-                              idx = index;
-                            });
+                          if (idx == index) {
+                            return;
                           }
+                          setState(() {
+                            idx = index;
+                          });
+                          Navigator.pop(context);
                         };
 
                         break;
@@ -124,21 +130,25 @@ class _HomePageState extends State<HomePage> {
                         label = '设置';
                         iconData = Icons.settings;
                         onPressed = () {
-                          if (idx != index) {
-                            setState(() {
-                              idx = index;
-                            });
+                          if (idx == index) {
+                            return;
                           }
+                          setState(() {
+                            idx = index;
+                          });
+                          Navigator.pop(context);
                         };
                       case 5:
                         label = '关于';
                         iconData = Icons.help_outline;
                         onPressed = () {
-                          if (idx != index) {
-                            setState(() {
-                              idx = index;
-                            });
+                          if (idx == index) {
+                            return;
                           }
+                          setState(() {
+                            idx = index;
+                          });
+                          Navigator.pop(context);
                         };
 
                         break;
