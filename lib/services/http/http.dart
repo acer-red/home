@@ -95,7 +95,7 @@ class ReponseGetUserInfo extends Basic {
       profile:
           g['data'] != null && g['data']['profile'] != null
               ? Profile.fromJson(g['data']['profile'])
-              : Profile(nickname: '', avatar: ''),
+              : Profile(nickname: '', avatar: Avatar(name: "", url: "")),
     );
   }
 }
@@ -123,7 +123,7 @@ class ReponsePostUserAutoLogin extends Basic {
       profile:
           g['data'] != null && g['data']['profile'] != null
               ? Profile.fromJson(g['data']['profile'])
-              : Profile(nickname: '', avatar: ''),
+              : Profile(nickname: '', avatar: Avatar(name: "", url: "")),
     );
   }
 }
@@ -201,6 +201,7 @@ class Http {
       if (err(response.statusCode)) {
         return fromJson({'err': 1, 'msg': getMsg(response.statusCode)});
       }
+      log.d("响应头: ${response.headers}");
     } catch (e) {
       log.e("请求失败\n${e.toString()}");
       return fromJson({'err': 1, 'msg': '登陆失败，请稍后尝试'});

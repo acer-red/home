@@ -5,7 +5,6 @@ class HTTPConfig {
     'SERVER_ADDRESS',
     defaultValue: 'https://acer.red',
   );
-  static  final String imageURL = '$serverAddress/image';
 }
 
 

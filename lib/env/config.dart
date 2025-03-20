@@ -1,11 +1,18 @@
-
+class Avatar{
+  String name;
+  String url;
+  Avatar({required this.name, required this.url});
+  factory Avatar.fromJson(Map<String, dynamic> g) {
+    return Avatar(name: g['name'], url: g['url']);
+  }
+}
 
 class Profile {
   String nickname;
-  String avatar;
+  Avatar avatar;
   Profile({required this.nickname, required this.avatar});
   factory Profile.fromJson(Map<String, dynamic> g) {
-    return Profile(nickname: g['nickname'], avatar: g['avatar']);
+    return Profile(nickname: g['nickname'], avatar: Avatar.fromJson(g['avatar']));
   }
 }
 

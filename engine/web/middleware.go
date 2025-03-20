@@ -1,12 +1,14 @@
 package web
 
 import (
-	"github.com/gin-gonic/gin"
-	log "github.com/tengfei-xy/go-log"
+	"fmt"
 	"modb"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	log "github.com/tengfei-xy/go-log"
 )
 
 func getHost(origin string) string {
@@ -40,22 +42,60 @@ func cors(origin string) gin.HandlerFunc {
 }
 func auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cookie, err := c.Cookie("login")
-		if err != nil {
-			unauthorized(c)
-			return
-		}
-		u, exist, err := modb.GetUser(cookie)
+
+		u, exist, err := authCookie(c)
 		if err != nil {
 			internalServerError(c)
 			return
 		}
-		if !exist {
+		if exist {
+			c.Set("user", u)
+			c.Next()
+			return
+		}
+		u, exist, err = authAPI(c)
+		if err != nil {
+			internalServerError(c)
+			return
+		}
+		if exist {
+			c.Set("user", u)
+			c.Next()
+			return
+		} else {
 			unauthorized(c)
 			return
 		}
+	}
+}
+func authCookie(c *gin.Context) (modb.User, bool, error) {
+	cookie, err := c.Cookie("login")
 
-		c.Set("user", u)
+	if err != nil {
+		if err == http.ErrNoCookie {
+			return modb.User{}, false, nil
+		}
+		return modb.User{}, false, err
+	}
+
+	return modb.GetUserFromCookie(cookie)
+}
+func authAPI(c *gin.Context) (modb.User, bool, error) {
+	api := c.Request.Header.Get("Authorization")
+	if api == "" {
+		return modb.User{}, false, nil
+	}
+	return modb.GetUserFromAPI(api)
+
+}
+
+func outputRequestHeader() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		for key, values := range c.Request.Header {
+			for _, value := range values {
+				fmt.Printf("%s: %s\n", key, value)
+			}
+		}
 		c.Next()
 	}
 }

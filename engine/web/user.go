@@ -11,10 +11,13 @@ import (
 func RouteUser(c *gin.Engine) {
 	v1 := c.Group("/api/v1")
 	{
+
+		v1.Use(outputRequestHeader())
 		v1User := v1.Group("/user")
 		{
 			v1User.POST("/register", userRegister)
 			v1User.POST("/login", userLogin)
+			v1User.GET("/randomonfo", userRandomInfo)
 			v1User.Use(auth())
 			v1User.POST("/autologin", userAutoLogin)
 			v1User.POST("/logout", userLogout)
@@ -84,9 +87,7 @@ func userAutoLogin(c *gin.Context) {
 }
 func userLogin(c *gin.Context) {
 	var req modb.RequestUserLogin
-	type response struct {
-		ID string `json:"id"`
-	}
+
 	log.Info("用户登陆")
 
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
@@ -117,8 +118,7 @@ func userLogin(c *gin.Context) {
 
 	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
 
-	id := req.GetInfo().ID
-	okData(c, response{ID: id})
+	okData(c, req.Login())
 }
 func userLogout(c *gin.Context) {
 	log.Info("用户注销")
@@ -152,4 +152,17 @@ func putUserInfo(c *gin.Context) {
 		return
 	}
 	ok(c)
+}
+func userRandomInfo(c *gin.Context) {
+	log.Info("用户随机信息")
+
+	type response struct {
+		Nickname string `json:"nickname"`
+		Avatar   string `json:"avatar"`
+	}
+
+	okData(c, response{
+		Nickname: sys.RandomNickname(),
+		Avatar:   sys.RandomAvatarBase64(sys.CreateUUID()),
+	})
 }

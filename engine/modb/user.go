@@ -13,15 +13,31 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+type API struct {
+	APIKey string `bson:"apikey" json:"apikey"`
+	EXTime string `bson:"extime" json:"extime"`
+}
 type Cookie struct {
 	Key    string    `bson:"key"`
 	Value  string    `bson:"value"`
 	CRTime time.Time `bson:"crtime"`
 	EXTime time.Time `bson:"extime"`
 }
+type Avatar struct {
+	Name string `json:"name" `
+	URL  string `json:"url"`
+}
+
+func getAvatarUrl(f string) string {
+	return "/images/" + f
+}
+
 type Profile struct {
-	Avatar   string `json:"avatar"`
+	Avatar   Avatar `json:"avatar"`
 	Nickname string `json:"nickname"`
+}
+type Product struct {
+	WT []API `json:"whisperingtime"`
 }
 type ResponseGetUserInfo struct {
 	ID       string    `json:"id"`
@@ -29,6 +45,8 @@ type ResponseGetUserInfo struct {
 	Email    string    `json:"email"`
 	Profile  Profile   `json:"profile"`
 	CRTime   time.Time `json:"crtime"`
+	Product  Product   `json:"products"`
+	API      []API     `json:"api"`
 }
 type User struct {
 	UOID     primitive.ObjectID `bson:"_id" json:"-"`
@@ -48,13 +66,14 @@ type RequestUserRegister struct {
 	Category    sys.CAtegory
 	Cookie      Cookie
 	profile     Profile
-	m           bson.M
 }
 type RequestUserLogin struct {
-	Account  string `json:"account"`
-	Password string `json:"password"`
-	m        bson.M
-	Cookie   Cookie `json:"-"`
+	Account     string `json:"account"`
+	Password    string `json:"password"`
+	CategoryStr string `json:"category"`
+	Category    sys.CAtegory
+	m           bson.M
+	Cookie      Cookie `json:"-"`
 }
 type RequestPutUserInfo struct {
 	Nickname string             `json:"nickname"`
@@ -182,7 +201,11 @@ func (req *RequestUserRegister) BuildProfile() error {
 		log.Error(err)
 		return err
 	}
-	req.profile.Avatar = f
+	req.profile.Avatar = Avatar{
+
+		Name: f,
+		URL:  getAvatarUrl(f),
+	}
 	return nil
 }
 func (req *RequestUserRegister) GetCookie() {
@@ -231,10 +254,10 @@ func (req *RequestUserRegister) Register() (string, error) {
 		m = append(m, bson.E{Key: "products", Value: bson.M{
 			string(req.Category): []bson.M{
 				{
-					"api_key":         apikey,
-					"expiration_time": time.Now().AddDate(0, 3, 0),
-					"last_used_time":  time.Now(),
-					"used_times":      0,
+					"apikey":     apikey,
+					"extime":     time.Now().AddDate(0, 3, 0),
+					"lutime":     time.Now(),
+					"used_times": 0,
 				},
 			},
 		}})
@@ -279,19 +302,6 @@ func (req *RequestUserLogin) Find() (bool, error) {
 func (req *RequestUserLogin) ComparePassword() error {
 	return sys.ComparePassword(req.m["password"].(string), req.Password)
 }
-func (req *RequestUserLogin) GetInfo() ResponseGetUserInfo {
-	res := ResponseGetUserInfo{
-		ID:       req.m["id"].(string),
-		Username: req.m["username"].(string),
-		Email:    req.m["email"].(string),
-		CRTime:   req.m["crtime"].(primitive.DateTime).Time(),
-		Profile: Profile{
-			Nickname: req.m["profile"].(bson.M)["nickname"].(string),
-			Avatar:   req.m["profile"].(bson.M)["avatar"].(string),
-		},
-	}
-	return res
-}
 func (req *RequestUserLogin) GetCookie() {
 	cookies := req.m["cookies"].(primitive.A)
 
@@ -318,8 +328,39 @@ func (req *RequestUserLogin) GetCookie() {
 		return
 	}
 }
-func (req *RequestUserLogin) GetID() string {
-	return req.m["id"].(string)
+func (req *RequestUserLogin) Login() ResponseGetUserInfo {
+	avatar := req.m["profile"].(bson.M)["avatar"].(string)
+	var apis []API
+	for _, api := range req.m["products"].(bson.M)[req.CategoryStr].(primitive.A) {
+		apis = append(apis, API{
+			APIKey: api.(bson.M)["apikey"].(string),
+			EXTime: api.(bson.M)["extime"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05"),
+		})
+	}
+
+	res := ResponseGetUserInfo{
+		ID:       req.m["id"].(string),
+		Username: req.m["username"].(string),
+		Email:    req.m["email"].(string),
+		CRTime:   req.m["crtime"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: req.m["profile"].(bson.M)["nickname"].(string),
+			Avatar: Avatar{
+				Name: avatar,
+				URL:  getAvatarUrl(avatar),
+			},
+		},
+		API: apis,
+	}
+	if l, ok := req.m["products"].(bson.M)[string(sys.CAtegoryWT)]; ok {
+		for _, g := range l.(primitive.A) {
+			res.Product.WT = append(res.Product.WT, API{
+				APIKey: g.(bson.M)["apikey"].(string),
+				EXTime: g.(bson.M)["extime"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+	return res
 }
 
 // 用户信息
@@ -365,10 +406,10 @@ func (req *RequestPutUserInfo) Update() error {
 	return nil
 }
 
-func GetUser(cookie string) (User, bool, error) {
-	var user User
+func GetUserFromCookie(cookie string) (User, bool, error) {
 	filter := bson.M{"cookies": bson.M{"$elemMatch": bson.M{"key": "login"}}}
-	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&user)
+	var m bson.M
+	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return User{}, false, nil
@@ -377,6 +418,43 @@ func GetUser(cookie string) (User, bool, error) {
 
 		return User{}, false, err
 	}
-	return user, true, nil
+	return User{
+		ID:       m["id"].(string),
+		Username: m["username"].(string),
+		Email:    m["email"].(string),
+		CRTime:   m["crtime"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: m["profile"].(bson.M)["nickname"].(string),
+			Avatar: Avatar{
+				Name: m["profile"].(bson.M)["avatar"].(string),
+				URL:  getAvatarUrl(m["profile"].(bson.M)["avatar"].(string)),
+			},
+		},
+	}, true, nil
 
+}
+func GetUserFromAPI(api string) (User, bool, error) {
+	filter := bson.M{"products.whisperingtime": bson.M{"$elemMatch": bson.M{"apikey": api}}}
+	var m bson.M
+	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return User{}, false, nil
+		}
+		log.Error(err)
+		return User{}, false, err
+	}
+	return User{
+		ID:       m["id"].(string),
+		Username: m["username"].(string),
+		Email:    m["email"].(string),
+		CRTime:   m["crtime"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: m["profile"].(bson.M)["nickname"].(string),
+			Avatar: Avatar{
+				Name: m["profile"].(bson.M)["avatar"].(string),
+				URL:  getAvatarUrl(m["profile"].(bson.M)["avatar"].(string)),
+			},
+		},
+	}, true, nil
 }

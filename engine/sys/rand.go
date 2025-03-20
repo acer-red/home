@@ -29,3 +29,10 @@ func RandomAvatar(random string) []byte {
 	}
 	return i.Bytes()
 }
+func RandomAvatarBase64(random string) string {
+	i, err := rs.BuildImage(random)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return i.Base64()
+}

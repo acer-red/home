@@ -5,10 +5,11 @@ import (
 	"sys"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/tengfei-xy/go-log"
 )
 
 func RouterImageGet(g *gin.Engine) {
-	a := g.Group("/image/:file")
+	a := g.Group("/images/:file")
 	{
 		a.GET("", ImageGet)
 	}
@@ -25,6 +26,7 @@ func RouterImageGet(g *gin.Engine) {
 //		}
 //	}
 func ImageGet(g *gin.Context) {
+	log.Infof("获取图片")
 	name := g.Param("file")
 	res, err := modb.ImageGet(name)
 

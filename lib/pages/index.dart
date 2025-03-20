@@ -13,7 +13,6 @@ import 'package:acer_red/services/http/http.dart';
 
 class Index extends StatefulWidget {
   const Index({super.key});
-  // const Index({Key? key, this.userData}) : super(key: key);
   @override
   State<Index> createState() => _Index();
 }
@@ -36,7 +35,6 @@ class _Index extends State<Index> {
   @override
   void didUpdateWidget(covariant Index oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 当父 Widget 传递的数据发生变化时重新赋值
     autologin();
   }
 
@@ -112,7 +110,7 @@ class _Index extends State<Index> {
   }
 
   Widget avatarIcon() {
-    final String url = "${HTTPConfig.imageURL}/${user.profile.avatar}";
+    final String url = "${HTTPConfig.serverAddress}${user.profile.avatar.url}";
     return Padding(
       padding: const EdgeInsets.all(2.0),
       child: MouseRegion(
