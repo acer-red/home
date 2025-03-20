@@ -15,6 +15,10 @@ func CreateUUID() string {
 	}
 	return strings.ReplaceAll(u.String(), "-", "")
 }
+func CreateAPIKey() string {
+	return strings.ToUpper(CreateUUID())
+
+}
 func RandomNickname() string {
 	return rs.Text()
 }

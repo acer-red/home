@@ -40,16 +40,16 @@ func ImageGet(name string) (bytes.Buffer, error) {
 	if err != nil {
 		log.Error(err)
 		if err == mongo.ErrNoDocuments {
-			return bytes.Buffer{}, sys.ERR_NO_FOUND
+			return bytes.Buffer{}, sys.ErrNoFound
 		} else {
-			return bytes.Buffer{}, sys.ERR_INTERNAL_SERVER_ERROR
+			return bytes.Buffer{}, sys.ErrInternalServer
 		}
 	}
 
 	// 从结果印迹中获取 _id
 	objectID, ok := resultDoc["_id"].(primitive.ObjectID)
 	if !ok {
-		return bytes.Buffer{}, sys.ERR_INTERNAL_SERVER_ERROR
+		return bytes.Buffer{}, sys.ErrInternalServer
 	}
 
 	var downloadBuffer bytes.Buffer

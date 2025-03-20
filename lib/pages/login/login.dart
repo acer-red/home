@@ -234,11 +234,11 @@ class _Login extends State<Login> {
       return false;
     }
 
-    // 检查是否包含特殊字符 (可以根据需求调整)
-    if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
-      prompt = '密码需要包含至少一个特殊字符';
-      return false;
-    }
+    // 检查是否包含特殊字符
+    // if (!password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) {
+    //   prompt = '密码需要包含至少一个特殊字符';
+    //   return false;
+    // }
 
     return true;
   }

@@ -41,12 +41,14 @@ type User struct {
 	Cookies []Cookie `bson:"cookies" json:"-"`
 }
 type RequestUserRegister struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
-	Cookie   Cookie `json:"-"`
-	profile  Profile
-	m        bson.M
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	Email       string `json:"email"`
+	CategoryStr string `json:"category"`
+	Category    sys.CAtegory
+	Cookie      Cookie
+	profile     Profile
+	m           bson.M
 }
 type RequestUserLogin struct {
 	Account  string `json:"account"`
@@ -124,9 +126,9 @@ func (req *RequestUserRegister) checkPasswd() bool {
 	}
 
 	// 检查是否包含特殊字符
-	if !regexp.MustCompile(`[!@#\$%^&*(),.?":{}|<>]`).MatchString(password) {
-		return false
-	}
+	// if !regexp.MustCompile(`[!@#\$%^&*(),.?":{}|<>]`).MatchString(password) {
+	// 	return false
+	// }
 	return true
 }
 func (req *RequestUserRegister) Check() bool {
@@ -197,7 +199,6 @@ func (req *RequestUserRegister) GetCookie() {
 		return
 	}
 }
-
 func (req *RequestUserRegister) Register() (string, error) {
 	var err error
 
@@ -224,6 +225,21 @@ func (req *RequestUserRegister) Register() (string, error) {
 		}},
 	}
 
+	// 添加产品API
+	if req.Category != sys.CAtegoryIndex {
+		apikey := sys.CreateAPIKey()
+		m = append(m, bson.E{Key: "products", Value: bson.M{
+			string(req.Category): []bson.M{
+				{
+					"api_key":         apikey,
+					"expiration_time": time.Now().AddDate(0, 3, 0),
+					"last_used_time":  time.Now(),
+					"used_times":      0,
+				},
+			},
+		}})
+	}
+
 	if _, err := db.Collection("user").InsertOne(context.TODO(), m); err != nil {
 		log.Error(err)
 		return "", err
@@ -233,7 +249,6 @@ func (req *RequestUserRegister) Register() (string, error) {
 }
 
 // 用户登陆
-
 func (req *RequestUserLogin) Check() bool {
 	// 检查用户名
 	if req.Account == "" || len(req.Account) > 20 {

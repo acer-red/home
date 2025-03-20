@@ -1,12 +1,12 @@
 package web
 
 import (
+	"github.com/gin-gonic/gin"
+	log "github.com/tengfei-xy/go-log"
+	"modb"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/gin-gonic/gin"
-	log "github.com/tengfei-xy/go-log"
 )
 
 func getHost(origin string) string {
@@ -35,6 +35,27 @@ func cors(origin string) gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+func auth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cookie, err := c.Cookie("login")
+		if err != nil {
+			unauthorized(c)
+			return
+		}
+		u, exist, err := modb.GetUser(cookie)
+		if err != nil {
+			internalServerError(c)
+			return
+		}
+		if !exist {
+			unauthorized(c)
+			return
+		}
+
+		c.Set("user", u)
 		c.Next()
 	}
 }

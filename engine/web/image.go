@@ -28,7 +28,7 @@ func ImageGet(g *gin.Context) {
 	name := g.Param("file")
 	res, err := modb.ImageGet(name)
 
-	if err == sys.ERR_NO_FOUND {
+	if err == sys.ErrNoFound {
 		notFound(g)
 		return
 	}

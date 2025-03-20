@@ -2,6 +2,7 @@ package web
 
 import (
 	"modb"
+	"sys"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
@@ -14,7 +15,7 @@ func RouteUser(c *gin.Engine) {
 		{
 			v1User.POST("/register", userRegister)
 			v1User.POST("/login", userLogin)
-			v1User.Use(authMiddleware())
+			v1User.Use(auth())
 			v1User.POST("/autologin", userAutoLogin)
 			v1User.POST("/logout", userLogout)
 			v1User.GET("/info", getUserInfo)
@@ -23,40 +24,28 @@ func RouteUser(c *gin.Engine) {
 	}
 
 }
-func authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		cookie, err := c.Cookie("login")
-		if err != nil {
-			unauthorized(c)
-			return
-		}
-		u, exist, err := modb.GetUser(cookie)
-		if err != nil {
-			internalServerError(c)
-			return
-		}
-		if !exist {
-			unauthorized(c)
-			return
-		}
-
-		c.Set("user", u)
-		c.Next()
-	}
-}
 
 func userRegister(c *gin.Context) {
 
 	var req modb.RequestUserRegister
 
-	type responseOK struct {
+	type response struct {
 		ID string `json:"id"`
+	}
+	var err error
+	log.Info("用户注册")
+
+	req.Category, err = sys.GetCategory(req.CategoryStr)
+	if err != nil {
+		badRequest(c)
+		return
 	}
 
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
 		return
 	}
+
 	if ok := req.Check(); !ok {
 		badRequest(c)
 		return
@@ -80,13 +69,16 @@ func userRegister(c *gin.Context) {
 		internalServerError(c)
 		return
 	}
+
 	req.GetCookie()
-
 	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
-	createdData(c, responseOK{ID: id})
 
+	log.Infof("用户注册成功 产品:%s", string(req.Category))
+	createdData(c, response{ID: id})
 }
 func userAutoLogin(c *gin.Context) {
+	log.Info("用户自动登陆")
+
 	user := c.MustGet("user").(modb.User)
 	okData(c, user)
 }
@@ -95,6 +87,8 @@ func userLogin(c *gin.Context) {
 	type response struct {
 		ID string `json:"id"`
 	}
+	log.Info("用户登陆")
+
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
 		return
@@ -115,7 +109,6 @@ func userLogin(c *gin.Context) {
 
 	err := req.ComparePassword()
 	if err != nil {
-		log.Warn("compare password")
 		badRequest(c)
 		return
 	}
@@ -128,6 +121,7 @@ func userLogin(c *gin.Context) {
 	okData(c, response{ID: id})
 }
 func userLogout(c *gin.Context) {
+	log.Info("用户注销")
 
 	user := c.MustGet("user").(modb.User)
 	if err := user.DeleteCookie(); err != nil {
@@ -139,11 +133,13 @@ func userLogout(c *gin.Context) {
 	okData(c, nil)
 }
 func getUserInfo(c *gin.Context) {
+	log.Info("用户获取信息")
+
 	user := c.MustGet("user").(modb.User)
 	okData(c, user)
 }
 func putUserInfo(c *gin.Context) {
-
+	log.Info("用户修改信息")
 	var req modb.RequestPutUserInfo
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
