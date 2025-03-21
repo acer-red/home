@@ -25,7 +25,7 @@ func RouteFeedback(g *gin.Engine) {
 	}
 }
 
-func fbPost(g *gin.Context) {
+func fbPost(c *gin.Context) {
 	log.Info("创建反馈")
 
 	type response struct {
@@ -36,13 +36,13 @@ func fbPost(g *gin.Context) {
 	}
 
 	var req modb.RequestFeedbackPost
-	req.UOID = g.MustGet("uoid").(primitive.ObjectID)
+	req.UOID = c.MustGet("uoid").(primitive.ObjectID)
 	req.FBID = res.ID
 
-	form, err := g.MultipartForm()
+	form, err := c.MultipartForm()
 	if err != nil {
 		log.Error(err)
-		badRequest(g)
+		badRequest(c)
 		return
 	}
 
@@ -58,7 +58,7 @@ func fbPost(g *gin.Context) {
 		file, err := deviceFiles[0].Open()
 		if err != nil {
 			log.Error(err)
-			badRequest(g)
+			badRequest(c)
 			return
 		}
 		defer file.Close()
@@ -74,7 +74,7 @@ func fbPost(g *gin.Context) {
 			file, err := fileHeader.Open()
 			if err != nil {
 				log.Error(err)
-				badRequest(g)
+				badRequest(c)
 				return
 			}
 			defer file.Close()
@@ -85,12 +85,12 @@ func fbPost(g *gin.Context) {
 	}
 
 	if err := modb.FeedbackPost(&req); err != nil {
-		internalServerError(g)
+		internalServerError(c)
 		return
 	}
 
 	log.Infof("创建反馈成功 %s", res.ID)
-	okData(g, res)
+	okData(c, res)
 }
 func atoi(s string) int {
 	i, _ := strconv.Atoi(s)

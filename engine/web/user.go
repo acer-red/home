@@ -11,7 +11,6 @@ import (
 func RouteUser(c *gin.Engine) {
 	v1 := c.Group("/api/v1")
 	{
-
 		v1.Use(outputRequestHeader())
 		v1User := v1.Group("/user")
 		{
@@ -23,6 +22,7 @@ func RouteUser(c *gin.Engine) {
 			v1User.POST("/logout", userLogout)
 			v1User.GET("/info", getUserInfo)
 			v1User.PUT("/info", putUserInfo)
+			v1User.PUT("/profile", putUserProfile)
 		}
 	}
 
@@ -31,19 +31,12 @@ func RouteUser(c *gin.Engine) {
 func userRegister(c *gin.Context) {
 
 	var req modb.RequestUserRegister
-
 	type response struct {
-		ID string `json:"id"`
+		ID  string     `json:"id"`
+		API []modb.API `json:"api"`
 	}
 	var err error
 	log.Info("用户注册")
-
-	req.Category, err = sys.GetCategory(req.CategoryStr)
-	if err != nil {
-		badRequest(c)
-		return
-	}
-
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
 		return
@@ -67,16 +60,23 @@ func userRegister(c *gin.Context) {
 		return
 	}
 
-	id, err := req.Register()
+	id, api, err := req.Register()
 	if err != nil {
 		internalServerError(c)
 		return
 	}
 
+	log.Info("用户注册成功")
+
+	// 不同的注册源，返回不同的验证方式
+	if !req.IsFromIndex() {
+		log.Debug3f("%s", api.APIKey)
+		okData(c, response{ID: id, API: []modb.API{api}})
+		return
+	}
+
 	req.GetCookie()
 	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
-
-	log.Infof("用户注册成功 产品:%s", string(req.Category))
 	createdData(c, response{ID: id})
 }
 func userAutoLogin(c *gin.Context) {
@@ -87,7 +87,6 @@ func userAutoLogin(c *gin.Context) {
 }
 func userLogin(c *gin.Context) {
 	var req modb.RequestUserLogin
-
 	log.Info("用户登陆")
 
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
@@ -114,11 +113,13 @@ func userLogin(c *gin.Context) {
 		return
 	}
 
-	req.GetCookie()
-
-	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
-
+	// 官网注册方式，返回 cookie
+	if req.IsFromIndex() {
+		req.GetCookie()
+		setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
+	}
 	okData(c, req.Login())
+
 }
 func userLogout(c *gin.Context) {
 	log.Info("用户注销")
@@ -165,4 +166,76 @@ func userRandomInfo(c *gin.Context) {
 		Nickname: sys.RandomNickname(),
 		Avatar:   sys.RandomAvatarBase64(sys.CreateUUID()),
 	})
+}
+func putUserProfile(c *gin.Context) {
+
+	type response struct {
+		URL string `json:"url"`
+	}
+	hasNickname := false
+	hasAvatar := false
+	user := c.MustGet("user").(modb.User)
+	if user.IsNoID() {
+		internalServerError(c)
+		return
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		badRequest(c)
+		return
+	}
+
+	nicknames := form.Value["nickname"]
+
+	if len(nicknames) != 0 {
+		nickname := nicknames[0]
+		log.Info("更新用户昵称")
+
+		hasNickname = true
+		if err := user.UpdateNickname(nickname); err != nil {
+			internalServerError(c)
+			return
+		}
+	}
+	avatars := form.File["avatar"]
+	if len(avatars) != 0 {
+		hasAvatar = true
+	}
+
+	// 没有头像和昵称
+	if hasNickname {
+		if !hasAvatar {
+			log.Info("更新用户昵称完成")
+			ok(c)
+			return
+		}
+	} else {
+		if !hasAvatar {
+			badRequest(c)
+			return
+		}
+	}
+	log.Info("更新用户头像")
+
+	ext := form.Value["ext"][0]
+	if ext == "" {
+		badRequest(c)
+		return
+	}
+
+	file, err := avatars[0].Open()
+	if err != nil {
+		badRequest(c)
+		return
+	}
+	defer file.Close()
+
+	if err := user.UpdateAvatar(file, ext); err != nil {
+		internalServerError(c)
+		return
+	}
+	log.Info("更新用户头像完成")
+
+	okData(c, response{URL: user.Profile.Avatar.URL})
 }

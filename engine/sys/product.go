@@ -22,15 +22,3 @@ func GetCategory(name string) (CAtegory, error) {
 		return "", ErrCategory
 	}
 }
-func GetCategoryString(cate CAtegory) string {
-	switch cate {
-	case CAtegoryIndex:
-		return "index"
-	case CAtegoryWT:
-		return "whisperingtime"
-	case CAtegorySQ:
-		return "sq"
-	default:
-		return ""
-	}
-}

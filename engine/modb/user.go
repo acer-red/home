@@ -2,6 +2,8 @@ package modb
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"sys"
@@ -14,8 +16,10 @@ import (
 )
 
 type API struct {
-	APIKey string `bson:"apikey" json:"apikey"`
-	EXTime string `bson:"extime" json:"extime"`
+	APIKey   string    `bson:"apikey" json:"apikey"`
+	EXTime   time.Time `bson:"extime" json:"extime"`
+	LUTime   time.Time `bson:"lutime" json:"lutime"`
+	UsedTims int32     `bson:"used_times" json:"used_times"`
 }
 type Cookie struct {
 	Key    string    `bson:"key"`
@@ -24,20 +28,13 @@ type Cookie struct {
 	EXTime time.Time `bson:"extime"`
 }
 type Avatar struct {
-	Name string `json:"name" `
-	URL  string `json:"url"`
-}
-
-func getAvatarUrl(f string) string {
-	return "/images/" + f
+	Name string `json:"name" bson:"name"`
+	URL  string `json:"url" bson:"url"`
 }
 
 type Profile struct {
 	Avatar   Avatar `json:"avatar"`
 	Nickname string `json:"nickname"`
-}
-type Product struct {
-	WT []API `json:"whisperingtime"`
 }
 type ResponseGetUserInfo struct {
 	ID       string    `json:"id"`
@@ -45,7 +42,6 @@ type ResponseGetUserInfo struct {
 	Email    string    `json:"email"`
 	Profile  Profile   `json:"profile"`
 	CRTime   time.Time `json:"crtime"`
-	Product  Product   `json:"products"`
 	API      []API     `json:"api"`
 }
 type User struct {
@@ -57,6 +53,7 @@ type User struct {
 	Profile  Profile            `bson:"profile" json:"profile"`
 	// UTime    time.Time       `bson:"uptime"`
 	Cookies []Cookie `bson:"cookies" json:"-"`
+	API     []API    `json:"api"`
 }
 type RequestUserRegister struct {
 	Username    string `json:"username"`
@@ -81,6 +78,7 @@ type RequestPutUserInfo struct {
 	UOID     primitive.ObjectID `json:"-"`
 }
 
+// cookie
 func (c *Cookie) setLoginCookie() {
 	c.Key = "login"
 	c.Value = sys.CreateUUID()
@@ -89,6 +87,16 @@ func (c *Cookie) setLoginCookie() {
 }
 
 // 用户注册
+func (req *RequestUserRegister) outputSrc() {
+	switch req.Category {
+	case sys.CAtegoryIndex:
+		log.Info("注册源:官网")
+	case sys.CAtegoryWT:
+		log.Info("注册源:枫迹")
+	default:
+		log.Warn("注册源:未知")
+	}
+}
 func (req *RequestUserRegister) checkUser() bool {
 	username := req.Username
 	if username == "" || len(username) > 20 {
@@ -150,6 +158,14 @@ func (req *RequestUserRegister) checkPasswd() bool {
 	// }
 	return true
 }
+func (req *RequestUserRegister) checkCatetory() error {
+	c, err := sys.GetCategory(req.CategoryStr)
+	if err != nil {
+		return err
+	}
+	req.Category = c
+	return nil
+}
 func (req *RequestUserRegister) Check() bool {
 	if !req.checkUser() {
 		return false
@@ -157,12 +173,20 @@ func (req *RequestUserRegister) Check() bool {
 	if !req.checkPasswd() {
 		return false
 	}
-
 	// 检查邮箱
 	if req.Email == "" || !strings.Contains(req.Email, "@") {
 		return false
 	}
+	if err := req.checkCatetory(); err != nil {
+		log.Error(err)
+		return false
+	}
+	req.outputSrc()
+
 	return true
+}
+func (req *RequestUserRegister) IsFromIndex() bool {
+	return req.Category == sys.CAtegoryIndex
 }
 func (req *RequestUserRegister) Find() (bool, error) {
 	// 检查用户名是否存在
@@ -204,12 +228,11 @@ func (req *RequestUserRegister) BuildProfile() error {
 	req.profile.Avatar = Avatar{
 
 		Name: f,
-		URL:  getAvatarUrl(f),
+		URL:  setAvatarUrl(f),
 	}
 	return nil
 }
 func (req *RequestUserRegister) GetCookie() {
-
 	req.Cookie.setLoginCookie()
 	filter := bson.M{"$or": []bson.M{
 		{"username": req.Username},
@@ -222,13 +245,15 @@ func (req *RequestUserRegister) GetCookie() {
 		return
 	}
 }
-func (req *RequestUserRegister) Register() (string, error) {
+
+// 插入到数据库中，并返回ID
+func (req *RequestUserRegister) Register() (string, API, error) {
 	var err error
 
 	req.Password, err = sys.HashPassword(req.Password)
 	if err != nil {
 		log.Error(err)
-		return "", err
+		return "", API{}, err
 	}
 	id := sys.CreateUUID()
 	p := bson.D{
@@ -249,29 +274,44 @@ func (req *RequestUserRegister) Register() (string, error) {
 	}
 
 	// 添加产品API
+	api := newAPI()
+	log.Debug3f("%s", api.APIKey)
+
 	if req.Category != sys.CAtegoryIndex {
-		apikey := sys.CreateAPIKey()
-		m = append(m, bson.E{Key: "products", Value: bson.M{
-			string(req.Category): []bson.M{
+		log.Debug3f("%s", api.APIKey)
+		m = append(m, bson.E{Key: "products", Value: bson.M{string(req.Category): bson.M{
+			string("api"): []bson.M{
 				{
-					"apikey":     apikey,
-					"extime":     time.Now().AddDate(0, 3, 0),
-					"lutime":     time.Now(),
-					"used_times": 0,
+					"apikey":     api.APIKey,
+					"extime":     api.EXTime,
+					"lutime":     api.LUTime,
+					"used_times": api.UsedTims,
 				},
 			},
-		}})
+		}}})
 	}
 
 	if _, err := db.Collection("user").InsertOne(context.TODO(), m); err != nil {
 		log.Error(err)
-		return "", err
+		return "", API{}, err
 	}
-	req.Cookie.setLoginCookie()
-	return id, nil
+	if req.Category == sys.CAtegoryIndex {
+		req.Cookie.setLoginCookie()
+	}
+
+	return id, api, nil
 }
 
 // 用户登陆
+func (req *RequestUserLogin) checkCatetory() error {
+	c, err := sys.GetCategory(req.CategoryStr)
+	if err != nil {
+		return err
+	}
+	req.Category = c
+	return nil
+}
+
 func (req *RequestUserLogin) Check() bool {
 	// 检查用户名
 	if req.Account == "" || len(req.Account) > 20 {
@@ -281,7 +321,14 @@ func (req *RequestUserLogin) Check() bool {
 	if len(req.Password) < 6 {
 		return false
 	}
+	if err := req.checkCatetory(); err != nil {
+		log.Error(err)
+		return false
+	}
 	return true
+}
+func (req *RequestUserLogin) IsFromIndex() bool {
+	return req.Category == sys.CAtegoryIndex
 }
 func (req *RequestUserLogin) Find() (bool, error) {
 
@@ -329,14 +376,8 @@ func (req *RequestUserLogin) GetCookie() {
 	}
 }
 func (req *RequestUserLogin) Login() ResponseGetUserInfo {
-	avatar := req.m["profile"].(bson.M)["avatar"].(string)
-	var apis []API
-	for _, api := range req.m["products"].(bson.M)[req.CategoryStr].(primitive.A) {
-		apis = append(apis, API{
-			APIKey: api.(bson.M)["apikey"].(string),
-			EXTime: api.(bson.M)["extime"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05"),
-		})
-	}
+
+	avatar := req.m["profile"].(bson.M)["avatar"].(bson.M)
 
 	res := ResponseGetUserInfo{
 		ID:       req.m["id"].(string),
@@ -346,17 +387,24 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 		Profile: Profile{
 			Nickname: req.m["profile"].(bson.M)["nickname"].(string),
 			Avatar: Avatar{
-				Name: avatar,
-				URL:  getAvatarUrl(avatar),
+				Name: avatar["name"].(string),
+				URL:  avatar["url"].(string),
 			},
 		},
-		API: apis,
 	}
-	if l, ok := req.m["products"].(bson.M)[string(sys.CAtegoryWT)]; ok {
+
+	if req.IsFromIndex() {
+		return res
+	}
+
+	// 客户端用户返回API
+	if l, ok := req.m["products"].(bson.M)[string(req.Category)].(bson.M)["api"]; ok {
 		for _, g := range l.(primitive.A) {
-			res.Product.WT = append(res.Product.WT, API{
-				APIKey: g.(bson.M)["apikey"].(string),
-				EXTime: g.(bson.M)["extime"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05"),
+			res.API = append(res.API, API{
+				APIKey:   g.(bson.M)["apikey"].(string),
+				EXTime:   g.(bson.M)["extime"].(primitive.DateTime).Time(),
+				LUTime:   g.(bson.M)["lutime"].(primitive.DateTime).Time(),
+				UsedTims: g.(bson.M)["used_times"].(int32),
 			})
 		}
 	}
@@ -364,6 +412,9 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 }
 
 // 用户信息
+func (u *User) IsNoID() bool {
+	return u.UOID == primitive.NilObjectID
+}
 func (u *User) DeleteCookie() error {
 	filter := bson.M{"_id": u.UOID}
 	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "cookies", Value: bson.M{"key": "login"}}}}}
@@ -373,6 +424,35 @@ func (u *User) DeleteCookie() error {
 		return err
 	}
 	return nil
+}
+func (u *User) UpdateNickname(nickname string) error {
+
+	filter := bson.M{"_id": u.UOID}
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "profile.nickname", Value: nickname}}}}
+	if _, err := db.Collection("user").UpdateOne(context.TODO(), filter, update); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (u *User) UpdateAvatar(data io.Reader, ext string) error {
+	fileID, err := getAvatarFileIDFromUOID(u.UOID)
+	if err != nil {
+		return err
+	}
+	if err := ImageDelete(fileID); err != nil {
+		return err
+	}
+
+	filename := fmt.Sprintf("%s%s", sys.CreateUUID(), ext)
+
+	if err := ImageAvatarCreate(filename, "avatar", data, u.UOID); err != nil {
+		return err
+	}
+	u.Profile.Avatar.Name = filename
+	u.Profile.Avatar.URL = setAvatarUrl(filename)
+	return nil
+
 }
 func (req *RequestPutUserInfo) Update() error {
 
@@ -407,8 +487,10 @@ func (req *RequestPutUserInfo) Update() error {
 }
 
 func GetUserFromCookie(cookie string) (User, bool, error) {
+
 	filter := bson.M{"cookies": bson.M{"$elemMatch": bson.M{"key": "login"}}}
 	var m bson.M
+
 	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -418,24 +500,30 @@ func GetUserFromCookie(cookie string) (User, bool, error) {
 
 		return User{}, false, err
 	}
+	profile := m["profile"].(bson.M)
+	avatar := profile["avatar"].(bson.M)
+
 	return User{
 		ID:       m["id"].(string),
 		Username: m["username"].(string),
 		Email:    m["email"].(string),
 		CRTime:   m["crtime"].(primitive.DateTime).Time(),
 		Profile: Profile{
-			Nickname: m["profile"].(bson.M)["nickname"].(string),
+			Nickname: profile["nickname"].(string),
 			Avatar: Avatar{
-				Name: m["profile"].(bson.M)["avatar"].(string),
-				URL:  getAvatarUrl(m["profile"].(bson.M)["avatar"].(string)),
+				Name: avatar["name"].(string),
+				URL:  avatar["url"].(string),
 			},
 		},
 	}, true, nil
 
 }
 func GetUserFromAPI(api string) (User, bool, error) {
-	filter := bson.M{"products.whisperingtime": bson.M{"$elemMatch": bson.M{"apikey": api}}}
+
+	filter := bson.M{fmt.Sprintf("%s.%s.%s", "products", string(sys.CAtegoryWT), "api"): bson.M{"$elemMatch": bson.M{"apikey": api}}}
 	var m bson.M
+	var apis []API
+
 	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -444,17 +532,43 @@ func GetUserFromAPI(api string) (User, bool, error) {
 		log.Error(err)
 		return User{}, false, err
 	}
+
+	for _, api := range m["products"].(bson.M)[string(sys.CAtegoryWT)].(bson.M)["api"].(primitive.A) {
+		apis = append(apis, API{
+			APIKey:   api.(bson.M)["apikey"].(string),
+			EXTime:   api.(bson.M)["extime"].(primitive.DateTime).Time(),
+			LUTime:   api.(bson.M)["lutime"].(primitive.DateTime).Time(),
+			UsedTims: api.(bson.M)["used_times"].(int32),
+		})
+	}
+	profile := m["profile"].(bson.M)
+	avatar := profile["avatar"].(bson.M)
 	return User{
+		UOID:     m["_id"].(primitive.ObjectID),
 		ID:       m["id"].(string),
 		Username: m["username"].(string),
 		Email:    m["email"].(string),
 		CRTime:   m["crtime"].(primitive.DateTime).Time(),
 		Profile: Profile{
-			Nickname: m["profile"].(bson.M)["nickname"].(string),
+			Nickname: profile["nickname"].(string),
 			Avatar: Avatar{
-				Name: m["profile"].(bson.M)["avatar"].(string),
-				URL:  getAvatarUrl(m["profile"].(bson.M)["avatar"].(string)),
+				Name: avatar["name"].(string),
+				URL:  avatar["url"].(string),
 			},
 		},
+		API: apis,
 	}, true, nil
+}
+
+// 只能用在设置路径的地方，不能用不在获取路径的地方
+func setAvatarUrl(f string) string {
+	return "/images/" + f
+}
+func newAPI() API {
+	return API{
+		APIKey:   sys.CreateAPIKey(),
+		EXTime:   time.Now().AddDate(0, 3, 0),
+		LUTime:   time.Now(),
+		UsedTims: 0,
+	}
 }

@@ -56,12 +56,14 @@ func ImageGet(name string) (bytes.Buffer, error) {
 
 	downloadStreamByID, err := bucket.OpenDownloadStream(objectID) // 使用文件 ID 下载
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return downloadBuffer, err
 	}
 	defer downloadStreamByID.Close()
 
 	if _, err := io.Copy(&downloadBuffer, downloadStreamByID); err != nil {
-		panic(err)
+		log.Error(err)
+		return downloadBuffer, err
 	}
 
 	return downloadBuffer, nil
@@ -70,12 +72,13 @@ func ImageCreate(filename string, category string, data []byte) error {
 
 	bucket, err := gridfs.NewBucket(db)
 	if err != nil {
-		panic(err)
+		log.Error(err)
+		return err
 	}
 
 	uploadStream, err := bucket.OpenUploadStream(
 		filename,
-		options.GridFSUpload().SetMetadata(map[string]interface{}{"type": "image", "category": category}), // 可选的元数据
+		options.GridFSUpload().SetMetadata(map[string]interface{}{"type": "image", "category": category}),
 	)
 	if err != nil {
 		log.Error(err)
@@ -91,12 +94,60 @@ func ImageCreate(filename string, category string, data []byte) error {
 	log.Infof("创建图片: %s(%s)", filename, ByteCountSI(fileSize))
 	return nil
 }
+func ImageAvatarCreate(filename string, category string, data io.Reader, uoid primitive.ObjectID) error {
+
+	bucket, err := gridfs.NewBucket(db)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	uploadStream, err := bucket.OpenUploadStream(
+		filename,
+		options.GridFSUpload().SetMetadata(map[string]interface{}{"type": "image", "uoid": uoid}),
+	)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer uploadStream.Close()
+
+	fileSize, err := io.Copy(uploadStream, data)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	log.Infof("创建图片: %s(%s)", filename, ByteCountSI(fileSize))
+	return nil
+}
+
+// 不一定有用
+func getAvatarFileIDFromUOID(uoid primitive.ObjectID) (primitive.ObjectID, error) {
+	filter := bson.D{{Key: "metadata.uoid", Value: uoid}, {Key: "metadata.setup", Value: "avatar"}, {Key: "type", Value: "image"}}
+	projection := bson.D{{Key: "_id", Value: 1}}
+	findOptions := options.FindOne().SetProjection(projection)
+	var resultDoc bson.M
+	err := db.Collection("fs.files").FindOne(context.TODO(), filter, findOptions).Decode(&resultDoc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return primitive.NilObjectID, sys.ErrNoFound
+		} else {
+			log.Error(err)
+			return primitive.NilObjectID, sys.ErrInternalServer
+		}
+	}
+	objectID, ok := resultDoc["_id"].(primitive.ObjectID)
+	if !ok {
+		return primitive.NilObjectID, sys.ErrInternalServer
+	}
+	return objectID, nil
+}
+
 func ImageCreateRandomAvatar(random string) (string, error) {
 	d := sys.RandomAvatar(random)
 	f := fmt.Sprintf("%s.png", sys.CreateUUID())
 	return f, ImageCreate(f, "avatar", d)
 }
-
 func ByteCountSI(b int64) string {
 	const unit = 1000
 	if b < unit {
@@ -108,4 +159,17 @@ func ByteCountSI(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+}
+func ImageDelete(fileID primitive.ObjectID) error {
+	bucket, err := gridfs.NewBucket(db)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	err = bucket.Delete(fileID)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
 }
