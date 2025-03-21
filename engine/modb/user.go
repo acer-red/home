@@ -161,7 +161,7 @@ func (req *RequestUserRegister) checkPasswd() bool {
 	// }
 	return true
 }
-func (req *RequestUserRegister) checkCatetory() error {
+func (req *RequestUserRegister) CheckAndSetCatetory() error {
 	c, err := sys.GetCategory(req.CategoryStr)
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (req *RequestUserRegister) Check() bool {
 	if req.Email == "" || !strings.Contains(req.Email, "@") {
 		return false
 	}
-	if err := req.checkCatetory(); err != nil {
+	if err := req.CheckAndSetCatetory(); err != nil {
 		log.Error(err)
 		return false
 	}
@@ -225,6 +225,11 @@ func (req *RequestUserRegister) GetCookie() {
 		return
 	}
 }
+func (req *RequestUserRegister) RandomAccount() {
+	req.Username = sys.CreateUUID()
+	req.Password = sys.CreateUUID()
+	req.Email = fmt.Sprintf("%s@%s.com", sys.CreateUUID(), sys.CreateUUID())
+}
 func (req *RequestUserRegister) BuildProfile() error {
 
 	data := bytes.NewBuffer(sys.RandomAvatar())
@@ -266,7 +271,7 @@ func (req *RequestUserRegister) CancelRegister() {
 		return
 	}
 }
-func (req *RequestUserRegister) Register() (string, API, error) {
+func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 	var err error
 
 	req.Password, err = sys.HashPassword(req.Password)
@@ -278,6 +283,7 @@ func (req *RequestUserRegister) Register() (string, API, error) {
 
 	m := bson.D{
 		{Key: "id", Value: id},
+		{Key: "role", Value: int(role)},
 		{Key: "username", Value: req.Username},
 		{Key: "password", Value: req.Password},
 		{Key: "email", Value: req.Email},
@@ -290,10 +296,8 @@ func (req *RequestUserRegister) Register() (string, API, error) {
 
 	// 添加产品API
 	api := newAPI()
-	log.Debug3f("%s", api.APIKey)
 
 	if req.Category != sys.CAtegoryIndex {
-		log.Debug3f("%s", api.APIKey)
 		m = append(m, bson.E{Key: "products", Value: bson.M{string(req.Category): bson.M{
 			string("api"): []bson.M{
 				{
@@ -606,7 +610,7 @@ func GetUserFromCookie(cookie string) (User, bool, error) {
 
 // 根据API获取用户信息，用在auth中间件
 func GetUserFromAPI(api string) (User, bool, error) {
-
+	log.Debug3f("API验证:%s", api)
 	filter := bson.M{fmt.Sprintf("%s.%s.%s", "products", string(sys.CAtegoryWT), "api"): bson.M{"$elemMatch": bson.M{"apikey": api}}}
 	var m bson.M
 	var apis []API

@@ -11,7 +11,7 @@ import (
 func RouteUser(c *gin.Engine) {
 	v1 := c.Group("/api/v1")
 	{
-		// v1.Use(outputRequestHeader())
+		v1.Use(outputRequestHeader())
 		v1User := v1.Group("/user")
 		{
 			v1User.POST("/register", userRegister)
@@ -30,6 +30,61 @@ func RouteUser(c *gin.Engine) {
 }
 
 func userRegister(c *gin.Context) {
+	if c.Query("visitor") == "1" {
+		userRegisterVisitor(c)
+		return
+	}
+	userRegisterNormal(c)
+
+}
+func userRegisterVisitor(c *gin.Context) {
+	log.Info("游客注册")
+
+	var req modb.RequestUserRegister
+
+	type response struct {
+		ID  string     `json:"id"`
+		API []modb.API `json:"api"`
+	}
+
+	var err error
+	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+		badRequest(c)
+		return
+	}
+	if !req.IsFromIndex() {
+		badRequest(c)
+		return
+	}
+
+	if err := req.CheckAndSetCatetory(); err != nil {
+		badRequest(c)
+		return
+	}
+	// 账号使用随机生成
+	req.RandomAccount()
+
+	id, api, err := req.Register(sys.RoleVisitor)
+	if err != nil {
+		internalServerError(c)
+		return
+	}
+
+	if err := req.BuildProfile(); err != nil {
+		req.CancelRegister()
+		internalServerError(c)
+		return
+	}
+
+	log.Info("游客注册成功")
+
+	// 不同的注册源，返回不同的验证方式
+	okData(c, response{ID: id, API: []modb.API{api}})
+
+}
+
+func userRegisterNormal(c *gin.Context) {
+	log.Info("用户注册")
 
 	var req modb.RequestUserRegister
 	type response struct {
@@ -37,7 +92,6 @@ func userRegister(c *gin.Context) {
 		API []modb.API `json:"api"`
 	}
 	var err error
-	log.Info("用户注册")
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		badRequest(c)
 		return
@@ -56,7 +110,7 @@ func userRegister(c *gin.Context) {
 		return
 	}
 
-	id, api, err := req.Register()
+	id, api, err := req.Register(sys.RoleNormal)
 	if err != nil {
 		internalServerError(c)
 		return
