@@ -94,7 +94,7 @@ func ImageCreate(filename string, category string, data []byte) error {
 	log.Infof("创建图片: %s(%s)", filename, ByteCountSI(fileSize))
 	return nil
 }
-func ImageAvatarCreate(filename string, category string, data io.Reader, uoid primitive.ObjectID) error {
+func ImageAvatarCreate(filename string, data io.Reader, uoid primitive.ObjectID) error {
 
 	bucket, err := gridfs.NewBucket(db)
 	if err != nil {
@@ -104,7 +104,7 @@ func ImageAvatarCreate(filename string, category string, data io.Reader, uoid pr
 
 	uploadStream, err := bucket.OpenUploadStream(
 		filename,
-		options.GridFSUpload().SetMetadata(map[string]interface{}{"type": "image", "uoid": uoid}),
+		options.GridFSUpload().SetMetadata(map[string]interface{}{"type": "image", "setup": "avatar", "uoid": uoid}),
 	)
 	if err != nil {
 		log.Error(err)
@@ -117,37 +117,10 @@ func ImageAvatarCreate(filename string, category string, data io.Reader, uoid pr
 		log.Error(err)
 		return err
 	}
-	log.Infof("创建图片: %s(%s)", filename, ByteCountSI(fileSize))
+	log.Infof("创建头像: %s(%s)", filename, ByteCountSI(fileSize))
 	return nil
 }
 
-// 不一定有用
-func getAvatarFileIDFromUOID(uoid primitive.ObjectID) (primitive.ObjectID, error) {
-	filter := bson.D{{Key: "metadata.uoid", Value: uoid}, {Key: "metadata.setup", Value: "avatar"}, {Key: "type", Value: "image"}}
-	projection := bson.D{{Key: "_id", Value: 1}}
-	findOptions := options.FindOne().SetProjection(projection)
-	var resultDoc bson.M
-	err := db.Collection("fs.files").FindOne(context.TODO(), filter, findOptions).Decode(&resultDoc)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return primitive.NilObjectID, sys.ErrNoFound
-		} else {
-			log.Error(err)
-			return primitive.NilObjectID, sys.ErrInternalServer
-		}
-	}
-	objectID, ok := resultDoc["_id"].(primitive.ObjectID)
-	if !ok {
-		return primitive.NilObjectID, sys.ErrInternalServer
-	}
-	return objectID, nil
-}
-
-func ImageCreateRandomAvatar(random string) (string, error) {
-	d := sys.RandomAvatar(random)
-	f := fmt.Sprintf("%s.png", sys.CreateUUID())
-	return f, ImageCreate(f, "avatar", d)
-}
 func ByteCountSI(b int64) string {
 	const unit = 1000
 	if b < unit {

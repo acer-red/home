@@ -11,7 +11,7 @@ import (
 func RouteUser(c *gin.Engine) {
 	v1 := c.Group("/api/v1")
 	{
-		v1.Use(outputRequestHeader())
+		// v1.Use(outputRequestHeader())
 		v1User := v1.Group("/user")
 		{
 			v1User.POST("/register", userRegister)
@@ -20,6 +20,7 @@ func RouteUser(c *gin.Engine) {
 			v1User.Use(auth())
 			v1User.POST("/autologin", userAutoLogin)
 			v1User.POST("/logout", userLogout)
+			v1User.DELETE("/info", userDelete)
 			v1User.GET("/info", getUserInfo)
 			v1User.PUT("/info", putUserInfo)
 			v1User.PUT("/profile", putUserProfile)
@@ -55,15 +56,17 @@ func userRegister(c *gin.Context) {
 		return
 	}
 
-	if err := req.BuildProfile(); err != nil {
-		internalServerError(c)
-		return
-	}
-
 	id, api, err := req.Register()
 	if err != nil {
 		internalServerError(c)
 		return
+	}
+
+	if err := req.BuildProfile(); err != nil {
+		req.CancelRegister()
+		internalServerError(c)
+		return
+
 	}
 
 	log.Info("用户注册成功")
@@ -238,4 +241,15 @@ func putUserProfile(c *gin.Context) {
 	log.Info("更新用户头像完成")
 
 	okData(c, response{URL: user.Profile.Avatar.URL})
+}
+func userDelete(c *gin.Context) {
+	log.Info("用户删除")
+
+	user := c.MustGet("user").(modb.User)
+	if err := user.Delete(); err != nil {
+		internalServerError(c)
+		return
+	}
+	setCookie(c, "login", "", 0)
+	ok(c)
 }

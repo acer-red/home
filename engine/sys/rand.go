@@ -22,8 +22,8 @@ func CreateAPIKey() string {
 func RandomNickname() string {
 	return rs.Text()
 }
-func RandomAvatar(random string) []byte {
-	i, err := rs.BuildImage(random)
+func RandomAvatar() []byte {
+	i, err := rs.BuildImage(CreateUUID())
 	if err != nil {
 		fmt.Println(err)
 	}

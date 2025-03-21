@@ -1,6 +1,7 @@
 package modb
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type API struct {
@@ -31,7 +33,6 @@ type Avatar struct {
 	Name string `json:"name" bson:"name"`
 	URL  string `json:"url" bson:"url"`
 }
-
 type Profile struct {
 	Avatar   Avatar `json:"avatar"`
 	Nickname string `json:"nickname"`
@@ -45,12 +46,13 @@ type ResponseGetUserInfo struct {
 	API      []API     `json:"api"`
 }
 type User struct {
-	UOID     primitive.ObjectID `bson:"_id" json:"-"`
-	ID       string             `bson:"id" json:"-"`
-	Username string             `bson:"username" json:"username"`
-	Email    string             `bson:"email" json:"email"`
-	CRTime   time.Time          `bson:"crtime" json:"crtime"`
-	Profile  Profile            `bson:"profile" json:"profile"`
+	UOID      primitive.ObjectID `bson:"_id" json:"-"`
+	auatarOID primitive.ObjectID `bson:"" json:"-"`
+	ID        string             `bson:"id" json:"-"`
+	Username  string             `bson:"username" json:"username"`
+	Email     string             `bson:"email" json:"email"`
+	CRTime    time.Time          `bson:"crtime" json:"crtime"`
+	Profile   Profile            `bson:"profile" json:"profile"`
 	// UTime    time.Time       `bson:"uptime"`
 	Cookies []Cookie `bson:"cookies" json:"-"`
 	API     []API    `json:"api"`
@@ -63,6 +65,7 @@ type RequestUserRegister struct {
 	Category    sys.CAtegory
 	Cookie      Cookie
 	profile     Profile
+	uoid        primitive.ObjectID
 }
 type RequestUserLogin struct {
 	Account     string `json:"account"`
@@ -209,29 +212,6 @@ func (req *RequestUserRegister) Find() (bool, error) {
 	}
 	return false, nil
 }
-func (req *RequestUserRegister) BuildProfile() error {
-
-	// 用户名，暂时只支持中文
-	req.profile.Nickname = sys.RandomNickname()
-
-	// 根据用户名创建随机头像
-	str := req.Username
-	if str == "" {
-		str = req.Email
-	}
-	// 返回文件名
-	f, err := ImageCreateRandomAvatar(str)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	req.profile.Avatar = Avatar{
-
-		Name: f,
-		URL:  setAvatarUrl(f),
-	}
-	return nil
-}
 func (req *RequestUserRegister) GetCookie() {
 	req.Cookie.setLoginCookie()
 	filter := bson.M{"$or": []bson.M{
@@ -245,8 +225,47 @@ func (req *RequestUserRegister) GetCookie() {
 		return
 	}
 }
+func (req *RequestUserRegister) BuildProfile() error {
 
-// 插入到数据库中，并返回ID
+	data := bytes.NewBuffer(sys.RandomAvatar())
+	filename := fmt.Sprintf("%s.png", sys.CreateUUID())
+	if err := ImageAvatarCreate(filename, data, req.uoid); err != nil {
+		log.Error(err)
+		return err
+	}
+	req.profile = Profile{
+		// 用户名，暂时只支持中文
+		Nickname: sys.RandomNickname(),
+
+		Avatar: Avatar{
+			Name: filename,
+			URL:  setAvatarUrl(filename),
+		},
+	}
+	m := bson.D{{Key: "profile", Value: bson.M{
+		"nickname": req.profile.Nickname,
+		"avatar": bson.M{
+			"name": req.profile.Avatar.Name,
+			"url":  req.profile.Avatar.URL,
+		},
+	}}}
+	filter := bson.M{"_id": req.uoid}
+	update := bson.D{{Key: "$set", Value: m}}
+	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (req *RequestUserRegister) CancelRegister() {
+	filter := bson.M{"_id": req.uoid}
+	_, err := db.Collection("user").DeleteOne(context.TODO(), filter)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+}
 func (req *RequestUserRegister) Register() (string, API, error) {
 	var err error
 
@@ -256,16 +275,12 @@ func (req *RequestUserRegister) Register() (string, API, error) {
 		return "", API{}, err
 	}
 	id := sys.CreateUUID()
-	p := bson.D{
-		{Key: "nickname", Value: req.profile.Nickname},
-		{Key: "avatar", Value: req.profile.Avatar},
-	}
+
 	m := bson.D{
 		{Key: "id", Value: id},
 		{Key: "username", Value: req.Username},
 		{Key: "password", Value: req.Password},
 		{Key: "email", Value: req.Email},
-		{Key: "profile", Value: p},
 		{Key: "crtime", Value: time.Now()},
 		{Key: "uptime", Value: time.Now()},
 		{Key: "cookies", Value: []Cookie{
@@ -291,10 +306,12 @@ func (req *RequestUserRegister) Register() (string, API, error) {
 		}}})
 	}
 
-	if _, err := db.Collection("user").InsertOne(context.TODO(), m); err != nil {
+	result, err := db.Collection("user").InsertOne(context.TODO(), m)
+	if err != nil {
 		log.Error(err)
 		return "", API{}, err
 	}
+	req.uoid = result.InsertedID.(primitive.ObjectID)
 	if req.Category == sys.CAtegoryIndex {
 		req.Cookie.setLoginCookie()
 	}
@@ -311,7 +328,6 @@ func (req *RequestUserLogin) checkCatetory() error {
 	req.Category = c
 	return nil
 }
-
 func (req *RequestUserLogin) Check() bool {
 	// 检查用户名
 	if req.Account == "" || len(req.Account) > 20 {
@@ -412,48 +428,6 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 }
 
 // 用户信息
-func (u *User) IsNoID() bool {
-	return u.UOID == primitive.NilObjectID
-}
-func (u *User) DeleteCookie() error {
-	filter := bson.M{"_id": u.UOID}
-	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "cookies", Value: bson.M{"key": "login"}}}}}
-	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	return nil
-}
-func (u *User) UpdateNickname(nickname string) error {
-
-	filter := bson.M{"_id": u.UOID}
-	update := bson.D{{Key: "$set", Value: bson.D{{Key: "profile.nickname", Value: nickname}}}}
-	if _, err := db.Collection("user").UpdateOne(context.TODO(), filter, update); err != nil {
-		log.Error(err)
-		return err
-	}
-	return nil
-}
-func (u *User) UpdateAvatar(data io.Reader, ext string) error {
-	fileID, err := getAvatarFileIDFromUOID(u.UOID)
-	if err != nil {
-		return err
-	}
-	if err := ImageDelete(fileID); err != nil {
-		return err
-	}
-
-	filename := fmt.Sprintf("%s%s", sys.CreateUUID(), ext)
-
-	if err := ImageAvatarCreate(filename, "avatar", data, u.UOID); err != nil {
-		return err
-	}
-	u.Profile.Avatar.Name = filename
-	u.Profile.Avatar.URL = setAvatarUrl(filename)
-	return nil
-
-}
 func (req *RequestPutUserInfo) Update() error {
 
 	var err error
@@ -485,7 +459,118 @@ func (req *RequestPutUserInfo) Update() error {
 	}
 	return nil
 }
+func (u *User) IsNoID() bool {
+	return u.UOID == primitive.NilObjectID
+}
+func (u *User) DeleteCookie() error {
+	filter := bson.M{"_id": u.UOID}
+	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "cookies", Value: bson.M{"key": "login"}}}}}
+	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (u *User) UpdateNickname(nickname string) error {
 
+	filter := bson.M{"_id": u.UOID}
+	update := bson.D{{Key: "$set", Value: bson.D{{Key: "profile.nickname", Value: nickname}}}}
+	if _, err := db.Collection("user").UpdateOne(context.TODO(), filter, update); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (u *User) UpdateAvatar(data io.Reader, ext string) error {
+	err := u.getAuatarOID()
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	if err := u.deleteAuatar(); err != nil {
+		log.Error(err)
+		return err
+	}
+	filename := fmt.Sprintf("%s%s", sys.CreateUUID(), ext)
+
+	if err := u.createAuatar(filename, data); err != nil {
+		log.Error(err)
+		return err
+	}
+
+	if err := u.updateProfileAvatar(filename); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+
+}
+func (u *User) getAuatarOID() error {
+	filter := bson.D{{Key: "metadata.uoid", Value: u.UOID}, {Key: "metadata.setup", Value: "avatar"}, {Key: "metadata.type", Value: "image"}}
+	projection := bson.D{{Key: "_id", Value: 1}}
+	findOptions := options.FindOne().SetProjection(projection)
+	var resultDoc bson.M
+	err := db.Collection("fs.files").FindOne(context.TODO(), filter, findOptions).Decode(&resultDoc)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return sys.ErrNoFound
+		} else {
+			log.Error(err)
+			return sys.ErrInternalServer
+		}
+	}
+	objectID, ok := resultDoc["_id"].(primitive.ObjectID)
+	if !ok {
+		return sys.ErrInternalServer
+	}
+	u.auatarOID = objectID
+	return nil
+}
+func (u *User) updateProfileAvatar(filename string) error {
+
+	u.Profile.Avatar.Name = filename
+	u.Profile.Avatar.URL = setAvatarUrl(filename)
+	m := bson.D{{Key: "profile.avatar", Value: bson.M{
+		"name": filename,
+		"url":  setAvatarUrl(filename),
+	}}}
+	filter := bson.M{"_id": u.UOID}
+	update := bson.D{{Key: "$set", Value: m}}
+	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (u *User) deleteAuatar() error {
+	if err := ImageDelete(u.auatarOID); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (u *User) createAuatar(filename string, data io.Reader) error {
+
+	if err := ImageAvatarCreate(filename, data, u.UOID); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+func (u *User) Delete() error {
+	filter := bson.D{{Key: "_id", Value: u.UOID}}
+	_, err := db.Collection("user").DeleteOne(context.TODO(), filter)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+
+}
+
+// 根据cookie获取用户信息，用在auth中间件
 func GetUserFromCookie(cookie string) (User, bool, error) {
 
 	filter := bson.M{"cookies": bson.M{"$elemMatch": bson.M{"key": "login"}}}
@@ -518,6 +603,8 @@ func GetUserFromCookie(cookie string) (User, bool, error) {
 	}, true, nil
 
 }
+
+// 根据API获取用户信息，用在auth中间件
 func GetUserFromAPI(api string) (User, bool, error) {
 
 	filter := bson.M{fmt.Sprintf("%s.%s.%s", "products", string(sys.CAtegoryWT), "api"): bson.M{"$elemMatch": bson.M{"apikey": api}}}

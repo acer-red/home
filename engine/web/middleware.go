@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"modb"
 	"net/http"
 	"net/url"
@@ -89,13 +88,13 @@ func authAPI(c *gin.Context) (modb.User, bool, error) {
 
 }
 
-func outputRequestHeader() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		for key, values := range c.Request.Header {
-			for _, value := range values {
-				fmt.Printf("%s: %s\n", key, value)
-			}
-		}
-		c.Next()
-	}
-}
+// func outputRequestHeader() gin.HandlerFunc {
+// 	return func(c *gin.Context) {
+// 		for key, values := range c.Request.Header {
+// 			for _, value := range values {
+// 				fmt.Printf("%s: %s\n", key, value)
+// 			}
+// 		}
+// 		c.Next()
+// 	}
+// }
