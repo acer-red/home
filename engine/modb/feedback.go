@@ -110,8 +110,8 @@ func FeedbacksGet(f FBFilter) (any, error) {
 		IsPublic   bool     `json:"is_public"`
 		DeviceFile string   `json:"device_file"`
 		Images     []string `json:"images"`
-		CRTime     string   `json:"crtime"`
-		UPTime     string   `json:"uptime"`
+		CeateAt    string   `json:"createAt"`
+		UpdateAt   string   `json:"updateAt"`
 	}
 	var res []response
 	filter := bson.M{"is_public": true}
@@ -152,8 +152,8 @@ func FeedbacksGet(f FBFilter) (any, error) {
 		if v, ok := m["images"].([]string); ok {
 			images = v
 		}
-		crtime := m["crtime"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05")
-		uptime := m["uptime"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05")
+		createAt := m["createAt"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05")
+		updateAt := m["updateAt"].(primitive.DateTime).Time().Format("2006-01-02 15:04:05")
 
 		res = append(res, response{
 			FBID:       fbid,
@@ -163,8 +163,8 @@ func FeedbacksGet(f FBFilter) (any, error) {
 			IsPublic:   isPublic,
 			DeviceFile: deviceFile,
 			Images:     images,
-			CRTime:     crtime,
-			UPTime:     uptime,
+			CeateAt:    createAt,
+			UpdateAt:   updateAt,
 		})
 	}
 	if err := cur.Err(); err != nil {

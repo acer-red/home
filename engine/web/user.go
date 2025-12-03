@@ -1,8 +1,8 @@
 package web
 
 import (
-	"modb"
-	"sys"
+	"github.com/acer-red/home/engine/modb"
+	"github.com/acer-red/home/engine/sys"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
@@ -133,7 +133,7 @@ func userRegisterNormal(c *gin.Context) {
 	}
 
 	req.GetCookie()
-	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
+	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.ExpiresAt.Unix()))
 	createdData(c, response{ID: id})
 }
 func userAutoLogin(c *gin.Context) {
@@ -173,7 +173,7 @@ func userLogin(c *gin.Context) {
 	// 官网注册方式，返回 cookie
 	if req.IsFromIndex() {
 		req.GetCookie()
-		setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.EXTime.Unix()))
+		setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.ExpiresAt.Unix()))
 	}
 	okData(c, req.Login())
 

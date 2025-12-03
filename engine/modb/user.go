@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/acer-red/home/engine/sys"
 	"io"
 	"regexp"
 	"strings"
-	"sys"
 	"time"
 
 	"github.com/tengfei-xy/go-log"
@@ -18,16 +18,16 @@ import (
 )
 
 type API struct {
-	APIKey   string    `bson:"apikey" json:"apikey"`
-	EXTime   time.Time `bson:"extime" json:"extime"`
-	LUTime   time.Time `bson:"lutime" json:"lutime"`
-	UsedTims int32     `bson:"used_times" json:"used_times"`
+	APIKey     string    `bson:"apikey" json:"apikey"`
+	ExpiresAt  time.Time `bson:"expiresAt" json:"expiresAt"`
+	LastUsedAt time.Time `bson:"lastusedAt" json:"lastusedAt"`
+	UsedTims   int32     `bson:"used_times" json:"used_times"`
 }
 type Cookie struct {
-	Key    string    `bson:"key"`
-	Value  string    `bson:"value"`
-	CRTime time.Time `bson:"crtime"`
-	EXTime time.Time `bson:"extime"`
+	Key       string    `bson:"key"`
+	Value     string    `bson:"value"`
+	CeateAt   time.Time `bson:"createAt"`
+	ExpiresAt time.Time `bson:"expiresAt"`
 }
 type Avatar struct {
 	Name string `json:"name" bson:"name"`
@@ -42,7 +42,7 @@ type ResponseGetUserInfo struct {
 	Username string    `json:"username"`
 	Email    string    `json:"email"`
 	Profile  Profile   `json:"profile"`
-	CRTime   time.Time `json:"crtime"`
+	CeateAt  time.Time `json:"createAt"`
 	API      []API     `json:"api"`
 }
 type User struct {
@@ -51,9 +51,9 @@ type User struct {
 	ID        string             `bson:"id" json:"-"`
 	Username  string             `bson:"username" json:"username"`
 	Email     string             `bson:"email" json:"email"`
-	CRTime    time.Time          `bson:"crtime" json:"crtime"`
+	CeateAt   time.Time          `bson:"createAt" json:"createAt"`
 	Profile   Profile            `bson:"profile" json:"profile"`
-	// UTime    time.Time       `bson:"uptime"`
+	// UTime    time.Time       `bson:"updateAt"`
 	Cookies []Cookie `bson:"cookies" json:"-"`
 	API     []API    `json:"api"`
 }
@@ -85,8 +85,8 @@ type RequestPutUserInfo struct {
 func (c *Cookie) setLoginCookie() {
 	c.Key = "login"
 	c.Value = sys.CreateUUID()
-	c.CRTime = time.Now()
-	c.EXTime = time.Now().AddDate(0, 1, 0)
+	c.CeateAt = time.Now()
+	c.ExpiresAt = time.Now().AddDate(0, 1, 0)
 }
 
 // 用户注册
@@ -287,8 +287,8 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 		{Key: "username", Value: req.Username},
 		{Key: "password", Value: req.Password},
 		{Key: "email", Value: req.Email},
-		{Key: "crtime", Value: time.Now()},
-		{Key: "uptime", Value: time.Now()},
+		{Key: "createAt", Value: time.Now()},
+		{Key: "updateAt", Value: time.Now()},
 		{Key: "cookies", Value: []Cookie{
 			req.Cookie,
 		}},
@@ -302,8 +302,8 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 			string("api"): []bson.M{
 				{
 					"apikey":     api.APIKey,
-					"extime":     api.EXTime,
-					"lutime":     api.LUTime,
+					"expiresAt":  api.ExpiresAt,
+					"lastusedAt": api.LastUsedAt,
 					"used_times": api.UsedTims,
 				},
 			},
@@ -377,8 +377,8 @@ func (req *RequestUserLogin) GetCookie() {
 		if c["key"] != "login" {
 			continue
 		}
-		req.Cookie.CRTime = c["crtime"].(primitive.DateTime).Time()
-		req.Cookie.EXTime = c["extime"].(primitive.DateTime).Time()
+		req.Cookie.CeateAt = c["createAt"].(primitive.DateTime).Time()
+		req.Cookie.ExpiresAt = c["expiresAt"].(primitive.DateTime).Time()
 		req.Cookie.Value = c["value"].(string)
 		req.Cookie.Key = c["key"].(string)
 		return
@@ -403,7 +403,7 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 		ID:       req.m["id"].(string),
 		Username: req.m["username"].(string),
 		Email:    req.m["email"].(string),
-		CRTime:   req.m["crtime"].(primitive.DateTime).Time(),
+		CeateAt:  req.m["createAt"].(primitive.DateTime).Time(),
 		Profile: Profile{
 			Nickname: req.m["profile"].(bson.M)["nickname"].(string),
 			Avatar: Avatar{
@@ -421,10 +421,10 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 	if l, ok := req.m["products"].(bson.M)[string(req.Category)].(bson.M)["api"]; ok {
 		for _, g := range l.(primitive.A) {
 			res.API = append(res.API, API{
-				APIKey:   g.(bson.M)["apikey"].(string),
-				EXTime:   g.(bson.M)["extime"].(primitive.DateTime).Time(),
-				LUTime:   g.(bson.M)["lutime"].(primitive.DateTime).Time(),
-				UsedTims: g.(bson.M)["used_times"].(int32),
+				APIKey:     g.(bson.M)["apikey"].(string),
+				ExpiresAt:  g.(bson.M)["expiresAt"].(primitive.DateTime).Time(),
+				LastUsedAt: g.(bson.M)["lastusedAt"].(primitive.DateTime).Time(),
+				UsedTims:   g.(bson.M)["used_times"].(int32),
 			})
 		}
 	}
@@ -455,7 +455,7 @@ func (req *RequestPutUserInfo) Update() error {
 	if len(update[0].Value.(bson.D)) == 0 {
 		return nil
 	}
-	update[0].Value = append(update[0].Value.(bson.D), bson.E{Key: "uptime", Value: time.Now()})
+	update[0].Value = append(update[0].Value.(bson.D), bson.E{Key: "updateAt", Value: time.Now()})
 
 	if _, err = db.Collection("user").UpdateOne(context.TODO(), filter, update); err != nil {
 		log.Error(err)
@@ -596,7 +596,7 @@ func GetUserFromCookie(cookie string) (User, bool, error) {
 		ID:       m["id"].(string),
 		Username: m["username"].(string),
 		Email:    m["email"].(string),
-		CRTime:   m["crtime"].(primitive.DateTime).Time(),
+		CeateAt:  m["createAt"].(primitive.DateTime).Time(),
 		Profile: Profile{
 			Nickname: profile["nickname"].(string),
 			Avatar: Avatar{
@@ -626,10 +626,10 @@ func GetUserFromAPI(api string) (User, bool, error) {
 
 	for _, api := range m["products"].(bson.M)[string(sys.CAtegoryWT)].(bson.M)["api"].(primitive.A) {
 		apis = append(apis, API{
-			APIKey:   api.(bson.M)["apikey"].(string),
-			EXTime:   api.(bson.M)["extime"].(primitive.DateTime).Time(),
-			LUTime:   api.(bson.M)["lutime"].(primitive.DateTime).Time(),
-			UsedTims: api.(bson.M)["used_times"].(int32),
+			APIKey:     api.(bson.M)["apikey"].(string),
+			ExpiresAt:  api.(bson.M)["expiresAt"].(primitive.DateTime).Time(),
+			LastUsedAt: api.(bson.M)["lastusedAt"].(primitive.DateTime).Time(),
+			UsedTims:   api.(bson.M)["used_times"].(int32),
 		})
 	}
 	profile := m["profile"].(bson.M)
@@ -639,7 +639,7 @@ func GetUserFromAPI(api string) (User, bool, error) {
 		ID:       m["id"].(string),
 		Username: m["username"].(string),
 		Email:    m["email"].(string),
-		CRTime:   m["crtime"].(primitive.DateTime).Time(),
+		CeateAt:  m["createAt"].(primitive.DateTime).Time(),
 		Profile: Profile{
 			Nickname: profile["nickname"].(string),
 			Avatar: Avatar{
@@ -657,9 +657,9 @@ func setAvatarUrl(f string) string {
 }
 func newAPI() API {
 	return API{
-		APIKey:   sys.CreateAPIKey(),
-		EXTime:   time.Now().AddDate(0, 3, 0),
-		LUTime:   time.Now(),
-		UsedTims: 0,
+		APIKey:     sys.CreateAPIKey(),
+		ExpiresAt:  time.Now().AddDate(0, 3, 0),
+		LastUsedAt: time.Now(),
+		UsedTims:   0,
 	}
 }
