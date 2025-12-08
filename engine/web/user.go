@@ -1,11 +1,13 @@
 package web
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/acer-red/home/engine/modb"
 	"github.com/acer-red/home/engine/sys"
 
+	"github.com/acer-red/home/engine/storage"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
@@ -39,6 +41,28 @@ func userRegister(c *gin.Context) {
 	userRegisterNormal(c)
 
 }
+
+// issueRegisterCookie builds a JWT for the newly registered user and attaches it via Set-Cookie.
+func issueRegisterCookie(c *gin.Context, req modb.RequestUserRegister, id string) bool {
+	expireAt := sys.JWTDefaultExpireAt()
+	jti := sys.CreateUUID()
+
+	token, err := sys.CreateJWT(jti, id, req.Username, req.Email, req.Category, time.Until(expireAt))
+	if err != nil {
+		internalServerError(c)
+		return false
+	}
+
+	_, err = storage.SaveSession(jti, id, token, req.Category, expireAt)
+	if err != nil {
+		internalServerError(c)
+		return false
+	}
+
+	setJWTCookie(c, token, expireAt)
+	return true
+}
+
 func userRegisterVisitor(c *gin.Context) {
 	log.Info("游客注册")
 
@@ -76,6 +100,11 @@ func userRegisterVisitor(c *gin.Context) {
 		req.CancelRegister()
 		internalServerError(c)
 		return
+
+	}
+
+	if ok := issueRegisterCookie(c, req, id); !ok {
+		return
 	}
 
 	log.Info("游客注册成功")
@@ -112,7 +141,7 @@ func userRegisterNormal(c *gin.Context) {
 		return
 	}
 
-	id, api, err := req.Register(sys.RoleNormal)
+	id, _, err := req.Register(sys.RoleNormal)
 	if err != nil {
 		internalServerError(c)
 		return
@@ -125,17 +154,12 @@ func userRegisterNormal(c *gin.Context) {
 
 	}
 
-	log.Info("用户注册成功")
-
-	// 不同的注册源，返回不同的验证方式
-	if !req.IsFromIndex() {
-		log.Debug3f("%s", api.APIKey)
-		okData(c, response{ID: id, API: []modb.API{api}})
+	if ok := issueRegisterCookie(c, req, id); !ok {
 		return
 	}
 
-	req.GetCookie(id)
-	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.ExpiresAt.Unix()))
+	log.Info("用户注册成功")
+
 	createdData(c, response{ID: id})
 }
 func userAutoLogin(c *gin.Context) {
@@ -155,7 +179,7 @@ func userLogin(c *gin.Context) {
 	}
 
 	if ok := req.Check(); !ok {
-		log.Warnf("login param check failed account=%s category=%s", req.Account, req.CategoryStr)
+		log.Warnf("login param check failed account=%s category=%s", req.Account, req.Category)
 		badRequest(c)
 		return
 	}
@@ -164,6 +188,7 @@ func userLogin(c *gin.Context) {
 		log.Errorf("login find user error account=%s err=%v", req.Account, err)
 		internalServerError(c)
 		return
+
 	} else if !ok {
 		log.Warnf("login user not found account=%s", req.Account)
 		badRequest(c)
@@ -176,21 +201,33 @@ func userLogin(c *gin.Context) {
 		badRequest(c)
 		return
 	}
+	if err = req.CheckNewDevice(); err != nil {
+		log.Error(err)
+		internalServerError(c)
+		return
+	}
 
 	jwtExpireAt := sys.JWTDefaultExpireAt()
 
-	// 官网注册方式，返回 cookie
-	if req.IsFromIndex() {
-		req.GetCookie()
-		setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.ExpiresAt.Unix()))
-		jwtExpireAt = req.Cookie.ExpiresAt
+	if _, err := c.Cookie("jwt"); err == http.ErrNoCookie {
+		if token, claims, found, err := storage.GetSessionCookieByUID(req.CategoryValue(), req.UserID()); err != nil {
+			log.Warnf("login lookup session failed account=%s err=%v", req.Account, err)
+		} else if found && claims != nil && claims.ExpiresAt != nil {
+			res := req.BuildLoginResponse()
+			setJWTCookie(c, token, claims.ExpiresAt.Time)
+			okData(c, res)
+			return
+		}
 	}
 
 	res, token, err := req.Login(jwtExpireAt)
+
 	if err != nil {
 		internalServerError(c)
 		return
 	}
+
+	// 为请求头设置set-cookie
 	setJWTCookie(c, token, jwtExpireAt)
 	okData(c, res)
 
@@ -198,19 +235,15 @@ func userLogin(c *gin.Context) {
 func userLogout(c *gin.Context) {
 	log.Info("用户注销")
 
-	user := c.MustGet("user").(modb.User)
-	cookieVal, _ := c.Cookie("login")
-	if cookieVal != "" {
-		if err := modb.DeleteLoginSession(cookieVal); err != nil {
+	// user := c.MustGet("user").(modb.User)
+	claims, exist := c.Get("claims")
+	if exist {
+		if err := storage.DeleteSession(claims.(sys.JWTClaims)); err != nil {
 			log.Warnf("delete redis login session failed: %v", err)
 		}
 	}
-	if err := user.DeleteCookie(); err != nil {
-		internalServerError(c)
-		return
-	}
 
-	setCookie(c, "login", "", 0)
+	// 向客户端删除cookie
 	setJWTCookie(c, "", time.Now())
 	okData(c, nil)
 }

@@ -1,4 +1,4 @@
-package modb
+package storage
 
 import (
 	"context"

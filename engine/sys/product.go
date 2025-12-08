@@ -10,15 +10,27 @@ const (
 	CAtegorySQ    CAtegory = "sq"             // 2,暂定为sq
 )
 
-func GetCategory(name string) (CAtegory, error) {
+func GetCategory(name string) (CAtegory, bool) {
 	switch name {
-	case "":
-		return CAtegoryIndex, nil
+	case "index":
+		return CAtegoryIndex, true
 	case "whisperingtime":
-		return CAtegoryWT, nil
+		return CAtegoryWT, true
 	case "sq":
-		return CAtegorySQ, nil
+		return CAtegorySQ, true
 	default:
-		return "", ErrCategory
+		return "", false
+	}
+}
+func (c CAtegory) GetAuthCookiePrefix() string {
+	switch c {
+	case CAtegoryIndex:
+		return "index:auth:"
+	case CAtegoryWT:
+		return "wt:auth:"
+	case CAtegorySQ:
+		return "sq:auth:"
+	default:
+		return "default:auth:"
 	}
 }

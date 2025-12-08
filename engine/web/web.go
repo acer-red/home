@@ -68,7 +68,10 @@ func setCookie(c *gin.Context, key, value string, ex int) {
 
 func setJWTCookie(c *gin.Context, token string, expireAt time.Time) {
 	maxAge := int(time.Until(expireAt).Seconds())
-	if maxAge <= 0 {
+	if token == "" {
+		maxAge = -1 // instruct browser to delete the cookie
+		expireAt = time.Unix(0, 0)
+	} else if maxAge <= 0 {
 		maxAge = int((30 * 24 * time.Hour).Seconds())
 	}
 

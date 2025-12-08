@@ -6,8 +6,7 @@ import (
 	"strings"
 
 	"github.com/acer-red/home/engine/modb"
-	"github.com/acer-red/home/engine/sys"
-
+	"github.com/acer-red/home/engine/storage"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
@@ -44,7 +43,7 @@ func cors(origin string) gin.HandlerFunc {
 func auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		u, exist, err := authJWT(c)
+		u, exist, err := authCookie(c)
 		if err != nil {
 			internalServerError(c)
 			return
@@ -55,16 +54,6 @@ func auth() gin.HandlerFunc {
 			return
 		}
 
-		u, exist, err = authCookie(c)
-		if err != nil {
-			internalServerError(c)
-			return
-		}
-		if exist {
-			c.Set("user", u)
-			c.Next()
-			return
-		}
 		u, exist, err = authAPI(c)
 		if err != nil {
 			internalServerError(c)
@@ -80,22 +69,8 @@ func auth() gin.HandlerFunc {
 		}
 	}
 }
-func authJWT(c *gin.Context) (modb.User, bool, error) {
-	token := getJWTFromRequest(c)
-	if token == "" {
-		return modb.User{}, false, nil
-	}
-
-	claims, err := sys.ParseJWT(token)
-	if err != nil {
-		log.Warnf("jwt parse failed: %v", err)
-		return modb.User{}, false, nil
-	}
-
-	return modb.GetUserByIDAndCategory(claims.UserID, claims.Category)
-}
 func authCookie(c *gin.Context) (modb.User, bool, error) {
-	cookie, err := c.Cookie("login")
+	cookie, err := c.Cookie("jwt")
 
 	if err != nil {
 		if err == http.ErrNoCookie {
@@ -104,27 +79,24 @@ func authCookie(c *gin.Context) (modb.User, bool, error) {
 		return modb.User{}, false, err
 	}
 
-	return modb.GetUserFromCookie(cookie)
+	uid, category, claims, err := storage.GetUserFromCookie(cookie)
+	if err != nil {
+		return modb.User{}, false, err
+	}
+	if claims == nil {
+		return modb.User{}, false, nil
+	}
+
+	c.Set("claims", *claims)
+	return modb.GetUserByIDAndCategory(uid, category)
 }
 func authAPI(c *gin.Context) (modb.User, bool, error) {
 	api := c.Request.Header.Get("Authorization")
 	if api == "" {
 		return modb.User{}, false, nil
 	}
+
 	return modb.GetUserFromAPI(api)
-
-}
-
-func getJWTFromRequest(c *gin.Context) string {
-	if token, err := c.Cookie("jwt"); err == nil && token != "" {
-		return token
-	}
-
-	header := c.Request.Header.Get("Authorization")
-	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
-		return strings.TrimSpace(header[7:])
-	}
-	return ""
 }
 
 func outputRequestHeader() gin.HandlerFunc {

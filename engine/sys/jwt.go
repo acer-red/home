@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	jwtEnvSecretKey    = "HOME_JWT_SECRET"
-	jwtDefaultSecret   = "acer-home-jwt-secret"
+	JwtEnvSecretKey    = "HOME_JWT_SECRET"
 	jwtDefaultValidity = 30 * 24 * time.Hour
 )
 
@@ -22,19 +21,28 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-func jwtSecret() []byte {
-	if v := os.Getenv(jwtEnvSecretKey); v != "" {
-		return []byte(v)
-	}
-	return []byte(jwtDefaultSecret)
+func (j *JWTClaims) GetID() string {
+	return j.ID
+}
+func (j *JWTClaims) GetUID() string {
+	return j.UserID
+}
+func (j *JWTClaims) GetCategory() CAtegory {
+	return j.Category
+}
+func (j *JWTClaims) GetCategoryPrefix() CAtegory {
+	return CAtegory(j.Category.GetAuthCookiePrefix())
+}
+
+func getJWTSecret() []byte {
+	return []byte(os.Getenv(JwtEnvSecretKey))
 }
 
 // CreateJWT builds a signed JWT carrying basic user information.
-func CreateJWT(userID, username, email string, category CAtegory, ttl time.Duration) (string, error) {
+func CreateJWT(uuid, userID, username, email string, category CAtegory, ttl time.Duration) (string, error) {
 	if ttl <= 0 {
 		ttl = jwtDefaultValidity
 	}
-
 	now := time.Now()
 	claims := JWTClaims{
 		UserID:   userID,
@@ -42,19 +50,20 @@ func CreateJWT(userID, username, email string, category CAtegory, ttl time.Durat
 		Email:    email,
 		Category: category,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        uuid,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtSecret())
+	return token.SignedString(getJWTSecret())
 }
 
 // ParseJWT validates and extracts claims from a token string.
 func ParseJWT(tokenString string) (*JWTClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return jwtSecret(), nil
+		return getJWTSecret(), nil
 	})
 	if err != nil {
 		return nil, err

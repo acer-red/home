@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/acer-red/home/engine/modb"
-
+	"github.com/acer-red/home/engine/storage"
 	"github.com/acer-red/home/engine/sys"
 	"github.com/acer-red/home/engine/web"
 
@@ -62,7 +62,7 @@ func init_mongo() {
 
 func init_redis() {
 	log.Infof("redis连接中...")
-	if err := modb.InitRedis(app.Config.Redis); err != nil {
+	if err := storage.InitRedis(app.Config.Redis); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("redis连接成功!!")
@@ -89,11 +89,17 @@ func quit() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	storage.CloseRedis()
 
 	os.Exit(1)
 }
-
+func init_env() {
+	if os.Getenv(sys.JwtEnvSecretKey) == "" {
+		panic("HOME_JWT_SECRET unset")
+	}
+}
 func main() {
+	init_env()
 	init_flag()
 	init_config()
 	init_log()
