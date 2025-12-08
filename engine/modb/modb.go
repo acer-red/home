@@ -28,5 +28,10 @@ func Init(uri string) error {
 	return nil
 }
 func Disconnect() error {
-	return mongosh.Disconnect(context.TODO())
+	if mongosh != nil {
+		if err := mongosh.Disconnect(context.TODO()); err != nil {
+			return err
+		}
+	}
+	return CloseRedis()
 }

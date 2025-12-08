@@ -1,6 +1,8 @@
 package web
 
 import (
+	"time"
+
 	"github.com/acer-red/home/engine/modb"
 	"github.com/acer-red/home/engine/sys"
 
@@ -132,7 +134,7 @@ func userRegisterNormal(c *gin.Context) {
 		return
 	}
 
-	req.GetCookie()
+	req.GetCookie(id)
 	setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.ExpiresAt.Unix()))
 	createdData(c, response{ID: id})
 }
@@ -147,47 +149,69 @@ func userLogin(c *gin.Context) {
 	log.Info("用户登陆")
 
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
+		log.Warnf("login bind body failed: %v", err)
 		badRequest(c)
 		return
 	}
 
 	if ok := req.Check(); !ok {
+		log.Warnf("login param check failed account=%s category=%s", req.Account, req.CategoryStr)
 		badRequest(c)
 		return
 	}
 
 	if ok, err := req.Find(); err != nil {
+		log.Errorf("login find user error account=%s err=%v", req.Account, err)
 		internalServerError(c)
 		return
 	} else if !ok {
+		log.Warnf("login user not found account=%s", req.Account)
 		badRequest(c)
 		return
 	}
 
 	err := req.ComparePassword()
 	if err != nil {
+		log.Warnf("login password mismatch account=%s err=%v", req.Account, err)
 		badRequest(c)
 		return
 	}
+
+	jwtExpireAt := sys.JWTDefaultExpireAt()
 
 	// 官网注册方式，返回 cookie
 	if req.IsFromIndex() {
 		req.GetCookie()
 		setCookie(c, req.Cookie.Key, req.Cookie.Value, int(req.Cookie.ExpiresAt.Unix()))
+		jwtExpireAt = req.Cookie.ExpiresAt
 	}
-	okData(c, req.Login())
+
+	res, token, err := req.Login(jwtExpireAt)
+	if err != nil {
+		internalServerError(c)
+		return
+	}
+	setJWTCookie(c, token, jwtExpireAt)
+	okData(c, res)
 
 }
 func userLogout(c *gin.Context) {
 	log.Info("用户注销")
 
 	user := c.MustGet("user").(modb.User)
+	cookieVal, _ := c.Cookie("login")
+	if cookieVal != "" {
+		if err := modb.DeleteLoginSession(cookieVal); err != nil {
+			log.Warnf("delete redis login session failed: %v", err)
+		}
+	}
 	if err := user.DeleteCookie(); err != nil {
 		internalServerError(c)
 		return
 	}
 
 	setCookie(c, "login", "", 0)
+	setJWTCookie(c, "", time.Now())
 	okData(c, nil)
 }
 func getUserInfo(c *gin.Context) {

@@ -22,6 +22,12 @@ type Web struct {
 	} `yaml:"cors"`
 }
 
+type Redis struct {
+	Address  string `yaml:"address"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
+}
+
 type Config struct {
 	Web Web `yaml:"web"`
 
@@ -32,6 +38,8 @@ type Config struct {
 		User     string `yaml:"user"`
 		Password string `yaml:"password"`
 	} `yaml:"db"`
+
+	Redis Redis `yaml:"redis"`
 }
 
 func (w *Web) SetFullAddress() {

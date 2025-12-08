@@ -3,12 +3,14 @@ package modb
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
-	"github.com/acer-red/home/engine/sys"
 	"io"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/acer-red/home/engine/sys"
 
 	"github.com/tengfei-xy/go-log"
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,6 +18,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+const passwordMinLen = 8
+const loginJWTDuration = 30 * 24 * time.Hour
 
 type API struct {
 	APIKey     string    `bson:"apikey" json:"apikey"`
@@ -44,6 +49,7 @@ type ResponseGetUserInfo struct {
 	Profile  Profile   `json:"profile"`
 	CeateAt  time.Time `json:"createAt"`
 	API      []API     `json:"api"`
+	JWT      string    `json:"jwt,omitempty"`
 }
 type User struct {
 	UOID      primitive.ObjectID `bson:"_id" json:"-"`
@@ -62,6 +68,8 @@ type RequestUserRegister struct {
 	Password    string `json:"password"`
 	Email       string `json:"email"`
 	CategoryStr string `json:"category"`
+	UID         string `json:"uid"`
+	PublicKey   string `json:"public_key"`
 	Category    sys.CAtegory
 	Cookie      Cookie
 	profile     Profile
@@ -136,7 +144,7 @@ func (req *RequestUserRegister) checkUser() bool {
 }
 func (req *RequestUserRegister) checkPasswd() bool {
 	password := req.Password
-	if len(password) < 8 {
+	if len(password) < passwordMinLen {
 		return false
 	}
 
@@ -212,7 +220,7 @@ func (req *RequestUserRegister) Find() (bool, error) {
 	}
 	return false, nil
 }
-func (req *RequestUserRegister) GetCookie() {
+func (req *RequestUserRegister) GetCookie(userID string) {
 	req.Cookie.setLoginCookie()
 	filter := bson.M{"$or": []bson.M{
 		{"username": req.Username},
@@ -223,6 +231,9 @@ func (req *RequestUserRegister) GetCookie() {
 	if err != nil {
 		log.Error(err)
 		return
+	}
+	if err := saveLoginSession(req.Cookie.Value, userID, req.Category, req.Cookie.ExpiresAt); err != nil {
+		log.Error(err)
 	}
 }
 func (req *RequestUserRegister) RandomAccount() {
@@ -271,6 +282,21 @@ func (req *RequestUserRegister) CancelRegister() {
 		return
 	}
 }
+func (req *RequestUserRegister) checkPublicKey() bool {
+	if req.PublicKey == "" {
+		return false
+	}
+	decoded, err := base64.StdEncoding.DecodeString(req.PublicKey)
+	if err != nil {
+		return false
+	}
+
+	zeroKey := make([]byte, 32)
+	if bytes.Equal(decoded, zeroKey) {
+		return false
+	}
+	return len(decoded) == 32
+}
 func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 	var err error
 
@@ -279,6 +305,12 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 		log.Error(err)
 		return "", API{}, err
 	}
+
+	ok := req.checkPublicKey()
+	if !ok {
+		return "", API{}, fmt.Errorf("不是有效的公钥")
+	}
+
 	id := sys.CreateUUID()
 
 	m := bson.D{
@@ -291,23 +323,25 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 		{Key: "updateAt", Value: time.Now()},
 		{Key: "cookies", Value: []Cookie{
 			req.Cookie,
-		}},
-	}
+		}}, {Key: "public_key", Value: []byte(req.PublicKey)}}
 
 	// 添加产品API
 	api := newAPI()
 
 	if req.Category != sys.CAtegoryIndex {
-		m = append(m, bson.E{Key: "products", Value: bson.M{string(req.Category): bson.M{
-			string("api"): []bson.M{
-				{
-					"apikey":     api.APIKey,
-					"expiresAt":  api.ExpiresAt,
-					"lastusedAt": api.LastUsedAt,
-					"used_times": api.UsedTims,
-				},
-			},
-		}}})
+		m = append(m, bson.E{
+			Key: "products", Value: bson.M{
+				string(req.Category): bson.M{
+					string("api"): []bson.M{
+						{
+							"apikey":     api.APIKey,
+							"expiresAt":  api.ExpiresAt,
+							"lastusedAt": api.LastUsedAt,
+							"used_times": api.UsedTims,
+						},
+					}},
+				"clients": []bson.M{{"uid": req.UID}},
+			}})
 	}
 
 	result, err := db.Collection("user").InsertOne(context.TODO(), m)
@@ -327,6 +361,7 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 func (req *RequestUserLogin) checkCatetory() error {
 	c, err := sys.GetCategory(req.CategoryStr)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 	req.Category = c
@@ -334,15 +369,16 @@ func (req *RequestUserLogin) checkCatetory() error {
 }
 func (req *RequestUserLogin) Check() bool {
 	// 检查用户名
-	if req.Account == "" || len(req.Account) > 20 {
+	if req.Account == "" {
+		log.Warn("用户名为空")
 		return false
 	}
 	// 检查密码
-	if len(req.Password) < 6 {
+	if len(req.Password) < passwordMinLen {
+		log.Warn("密码过短")
 		return false
 	}
 	if err := req.checkCatetory(); err != nil {
-		log.Error(err)
 		return false
 	}
 	return true
@@ -381,6 +417,9 @@ func (req *RequestUserLogin) GetCookie() {
 		req.Cookie.ExpiresAt = c["expiresAt"].(primitive.DateTime).Time()
 		req.Cookie.Value = c["value"].(string)
 		req.Cookie.Key = c["key"].(string)
+		if err := saveLoginSession(req.Cookie.Value, req.m["id"].(string), req.Category, req.Cookie.ExpiresAt); err != nil {
+			log.Error(err)
+		}
 		return
 	}
 	req.Cookie.setLoginCookie()
@@ -394,8 +433,31 @@ func (req *RequestUserLogin) GetCookie() {
 		log.Error(err)
 		return
 	}
+
+	if err := saveLoginSession(req.Cookie.Value, req.m["id"].(string), req.Category, req.Cookie.ExpiresAt); err != nil {
+		log.Error(err)
+	}
 }
-func (req *RequestUserLogin) Login() ResponseGetUserInfo {
+func (req *RequestUserLogin) jwtExpireAt() time.Time {
+	if !req.Cookie.ExpiresAt.IsZero() && req.Cookie.ExpiresAt.After(time.Now()) {
+		return req.Cookie.ExpiresAt
+	}
+	return time.Now().Add(loginJWTDuration)
+}
+func (req *RequestUserLogin) buildJWT(expireAt time.Time) (string, error) {
+	ttl := time.Until(expireAt)
+	if ttl <= 0 {
+		ttl = loginJWTDuration
+	}
+	return sys.CreateJWT(
+		req.m["id"].(string),
+		req.m["username"].(string),
+		req.m["email"].(string),
+		req.Category,
+		ttl,
+	)
+}
+func (req *RequestUserLogin) Login(expireAt time.Time) (ResponseGetUserInfo, string, error) {
 
 	avatar := req.m["profile"].(bson.M)["avatar"].(bson.M)
 
@@ -413,11 +475,18 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 		},
 	}
 
+	token, err := req.buildJWT(expireAt)
+	if err != nil {
+		log.Error(err)
+		return ResponseGetUserInfo{}, "", err
+	}
+	res.JWT = token
+
 	if req.IsFromIndex() {
-		return res
+		return res, token, nil
 	}
 
-	// 客户端用户返回API
+	// 返回API
 	if l, ok := req.m["products"].(bson.M)[string(req.Category)].(bson.M)["api"]; ok {
 		for _, g := range l.(primitive.A) {
 			res.API = append(res.API, API{
@@ -428,7 +497,21 @@ func (req *RequestUserLogin) Login() ResponseGetUserInfo {
 			})
 		}
 	}
-	return res
+	var clients []Clients
+
+	// 返回UID
+	if l, ok := req.m["products"].(bson.M)[string(req.Category)].(bson.M)["clients"]; ok {
+		for _, g := range l.(primitive.A) {
+			clients = append(clients, Clients{
+				UID: g.(bson.M)["uid"].(string),
+			})
+		}
+	}
+	return res, token, nil
+}
+
+type Clients struct {
+	UID string `bson:"uid" json:"uid"`
 }
 
 // 用户信息
@@ -576,36 +659,7 @@ func (u *User) Delete() error {
 
 // 根据cookie获取用户信息，用在auth中间件
 func GetUserFromCookie(cookie string) (User, bool, error) {
-
-	filter := bson.M{"cookies": bson.M{"$elemMatch": bson.M{"key": "login"}}}
-	var m bson.M
-
-	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return User{}, false, nil
-		}
-		log.Error(err)
-
-		return User{}, false, err
-	}
-	profile := m["profile"].(bson.M)
-	avatar := profile["avatar"].(bson.M)
-
-	return User{
-		ID:       m["id"].(string),
-		Username: m["username"].(string),
-		Email:    m["email"].(string),
-		CeateAt:  m["createAt"].(primitive.DateTime).Time(),
-		Profile: Profile{
-			Nickname: profile["nickname"].(string),
-			Avatar: Avatar{
-				Name: avatar["name"].(string),
-				URL:  avatar["url"].(string),
-			},
-		},
-	}, true, nil
-
+	return getUserFromLoginSession(cookie)
 }
 
 // 根据API获取用户信息，用在auth中间件
@@ -649,6 +703,58 @@ func GetUserFromAPI(api string) (User, bool, error) {
 		},
 		API: apis,
 	}, true, nil
+}
+
+// 根据ID获取用户信息，偏向在JWT校验后使用
+func GetUserByIDAndCategory(id string, category sys.CAtegory) (User, bool, error) {
+	filter := bson.M{"id": id}
+	var m bson.M
+
+	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return User{}, false, nil
+		}
+		log.Error(err)
+		return User{}, false, err
+	}
+
+	profile := m["profile"].(bson.M)
+	avatar := profile["avatar"].(bson.M)
+
+	u := User{
+		UOID:     m["_id"].(primitive.ObjectID),
+		ID:       m["id"].(string),
+		Username: m["username"].(string),
+		Email:    m["email"].(string),
+		CeateAt:  m["createAt"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: profile["nickname"].(string),
+			Avatar: Avatar{
+				Name: avatar["name"].(string),
+				URL:  avatar["url"].(string),
+			},
+		},
+	}
+
+	if category != sys.CAtegoryIndex {
+		if products, ok := m["products"].(bson.M); ok {
+			if data, ok := products[string(category)].(bson.M); ok {
+				if apis, ok := data["api"]; ok {
+					for _, api := range apis.(primitive.A) {
+						u.API = append(u.API, API{
+							APIKey:     api.(bson.M)["apikey"].(string),
+							ExpiresAt:  api.(bson.M)["expiresAt"].(primitive.DateTime).Time(),
+							LastUsedAt: api.(bson.M)["lastusedAt"].(primitive.DateTime).Time(),
+							UsedTims:   api.(bson.M)["used_times"].(int32),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return u, true, nil
 }
 
 // 只能用在设置路径的地方，不能用不在获取路径的地方

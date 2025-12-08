@@ -60,6 +60,14 @@ func init_mongo() {
 	log.Infof("mongo连接成功!!")
 }
 
+func init_redis() {
+	log.Infof("redis连接中...")
+	if err := modb.InitRedis(app.Config.Redis); err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("redis连接成功!!")
+}
+
 func init_web() {
 
 	log.Infof("API: %s", app.Config.Web.Server.FullAddress)
@@ -89,6 +97,7 @@ func main() {
 	init_flag()
 	init_config()
 	init_log()
+	init_redis()
 	init_mongo()
 	go quit()
 	init_web()
