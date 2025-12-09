@@ -7,13 +7,34 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acer-red/home/engine/sys"
-
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
 
-func Init(env sys.Web) {
+type Config struct {
+	Server struct {
+		Address     string `yaml:"address"`
+		SslEnable   bool   `yaml:"ssl_enable"`
+		CrtFile     string `yaml:"crt_file"`
+		KeyFile     string `yaml:"key_file"`
+		Port        int    `yaml:"port"`
+		FullAddress string `yaml:"-"`
+	} `yaml:"server"`
+	CORS struct {
+		Enable      bool   `yaml:"enable"`
+		AllowOrigin string `yaml:"allow_origin"`
+	} `yaml:"cors"`
+}
+
+func (w *Config) SetFullAddress() {
+	if w.Server.SslEnable {
+		w.Server.FullAddress = fmt.Sprintf("https://%s:%d", w.Server.Address, w.Server.Port)
+	} else {
+		w.Server.FullAddress = fmt.Sprintf("http://%s:%d", w.Server.Address, w.Server.Port)
+	}
+}
+
+func Init(env Config) {
 	gin.SetMode(gin.ReleaseMode)
 	g := gin.Default()
 
@@ -46,7 +67,7 @@ func Init(env sys.Web) {
 	}
 
 }
-func setEnv(env sys.Web) gin.HandlerFunc {
+func setEnv(env Config) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		c.Set("env", env)
@@ -129,7 +150,6 @@ func loggerMiddleware() gin.HandlerFunc {
 				requestInfo.WriteString(fmt.Sprintf("Body: [%s, %d bytes]\n", contentType, len(bodyBytes)))
 			}
 		}
-		requestInfo.WriteString("=============================")
 
 		log.Debug3f("\n%s", requestInfo.String())
 
@@ -164,8 +184,7 @@ func loggerMiddleware() gin.HandlerFunc {
 				responseInfo.WriteString(fmt.Sprintf("Body: [%s, %d bytes]\n", contentType, writer.body.Len()))
 			}
 		}
-		responseInfo.WriteString("==============================")
 
-		log.Debug2f("\n%s", responseInfo.String())
+		log.Debug3f("\n%s", responseInfo.String())
 	}
 }

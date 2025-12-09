@@ -1,19 +1,19 @@
-package sys
+package util
 
 // 定义枚举类型
 type CAtegory string
 
 // 定义枚举常量
 const (
-	CAtegoryIndex CAtegory = ""               // 0,官网,official
-	CAtegoryWT    CAtegory = "whisperingtime" // 1,枫迹,whisperingtime
-	CAtegorySQ    CAtegory = "sq"             // 2,暂定为sq
+	CAtegoryOfficial CAtegory = "official"       // 0,官网,official
+	CAtegoryWT       CAtegory = "whisperingtime" // 1,枫迹,whisperingtime
+	CAtegorySQ       CAtegory = "sq"             // 2,暂定为sq
 )
 
 func GetCategory(name string) (CAtegory, bool) {
 	switch name {
-	case "index":
-		return CAtegoryIndex, true
+	case "official":
+		return CAtegoryOfficial, true
 	case "whisperingtime":
 		return CAtegoryWT, true
 	case "sq":
@@ -24,13 +24,13 @@ func GetCategory(name string) (CAtegory, bool) {
 }
 func (c CAtegory) GetAuthCookiePrefix() string {
 	switch c {
-	case CAtegoryIndex:
-		return "index:auth:"
+	case CAtegoryOfficial:
+		return "index:auth"
 	case CAtegoryWT:
-		return "wt:auth:"
+		return "wt:auth"
 	case CAtegorySQ:
-		return "sq:auth:"
+		return "sq:auth"
 	default:
-		return "default:auth:"
+		return "default:auth"
 	}
 }

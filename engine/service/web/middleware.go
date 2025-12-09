@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/acer-red/home/engine/modb"
-	"github.com/acer-red/home/engine/storage"
+	"github.com/acer-red/official/engine/service/cache"
+	"github.com/acer-red/official/engine/service/modb"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
@@ -49,6 +49,7 @@ func auth() gin.HandlerFunc {
 			return
 		}
 		if exist {
+			log.Debug("cookie通过")
 			c.Set("user", u)
 			c.Next()
 			return
@@ -60,26 +61,30 @@ func auth() gin.HandlerFunc {
 			return
 		}
 		if exist {
+			log.Debug("API通过")
 			c.Set("user", u)
 			c.Next()
 			return
-		} else {
-			unauthorized(c)
-			return
 		}
+
+		log.Debug("无任何认证方式")
+		unauthorized(c)
+
 	}
 }
 func authCookie(c *gin.Context) (modb.User, bool, error) {
+	log.Debug3("尝试Cookie认证")
 	cookie, err := c.Cookie("jwt")
 
 	if err != nil {
 		if err == http.ErrNoCookie {
+			log.Debug3("无cookie")
 			return modb.User{}, false, nil
 		}
 		return modb.User{}, false, err
 	}
 
-	uid, category, claims, err := storage.GetUserFromCookie(cookie)
+	uid, category, claims, err := cache.GetUserFromCookie(cookie)
 	if err != nil {
 		return modb.User{}, false, err
 	}
@@ -91,21 +96,12 @@ func authCookie(c *gin.Context) (modb.User, bool, error) {
 	return modb.GetUserByIDAndCategory(uid, category)
 }
 func authAPI(c *gin.Context) (modb.User, bool, error) {
+	log.Debug3f("尝试API认证")
+
 	api := c.Request.Header.Get("Authorization")
 	if api == "" {
 		return modb.User{}, false, nil
 	}
 
 	return modb.GetUserFromAPI(api)
-}
-
-func outputRequestHeader() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		for key, values := range c.Request.Header {
-			for _, value := range values {
-				log.Debug3f("%s: %s", key, value)
-			}
-		}
-		c.Next()
-	}
 }

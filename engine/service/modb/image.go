@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/acer-red/home/engine/sys"
 	"io"
 
+	"github.com/acer-red/official/engine/util"
 	log "github.com/tengfei-xy/go-log"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -40,16 +40,16 @@ func ImageGet(name string) (bytes.Buffer, error) {
 	if err != nil {
 		log.Error(err)
 		if err == mongo.ErrNoDocuments {
-			return bytes.Buffer{}, sys.ErrNoFound
+			return bytes.Buffer{}, util.ErrNoFound
 		} else {
-			return bytes.Buffer{}, sys.ErrInternalServer
+			return bytes.Buffer{}, util.ErrInternalServer
 		}
 	}
 
 	// 从结果印迹中获取 _id
 	objectID, ok := resultDoc["_id"].(primitive.ObjectID)
 	if !ok {
-		return bytes.Buffer{}, sys.ErrInternalServer
+		return bytes.Buffer{}, util.ErrInternalServer
 	}
 
 	var downloadBuffer bytes.Buffer

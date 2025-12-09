@@ -1,4 +1,4 @@
-package storage
+package cache
 
 import (
 	"context"
@@ -6,33 +6,24 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/acer-red/home/engine/sys"
+	"github.com/acer-red/official/engine/util"
 	"github.com/redis/go-redis/v9"
 	log "github.com/tengfei-xy/go-log"
 )
 
 var errRedisNotInit = errors.New("redis not initialized")
 
-type loginSession struct {
-	UserID   string       `json:"uid"`
-	Category sys.CAtegory `json:"category"`
-	Expires  int64        `json:"expires"`
+// / 关键步骤: 设置Key的名称
+func buildSessionKey(prefix, accountID, uid string) string {
+	return fmt.Sprintf("%s:account:%s:%s", prefix, accountID, uid)
 }
 
-// buildSessionKey returns the canonical redis key layout for a JWT token payload.
-// Format: <prefix>user:<userID>:jwt:<jti> where prefix already ends with a colon.
-func buildSessionKey(prefix, userID, jti string) string {
-	return fmt.Sprintf("%suser:%s:jwt:%s", prefix, userID, jti)
-}
-
-// buildLookupKey stores the latest session key pointer for a user.
-// Format: <prefix>user:<userID>:latest
-func buildLookupKey(prefix, userID string) string {
-	return fmt.Sprintf("%suser:%s:latest", prefix, userID)
+func buildLookupKey(prefix, accountID string) string {
+	return fmt.Sprintf("%s:account:%s:latest", prefix, accountID)
 }
 
 // SaveSession stores JWT in Redis using key format <prefix>user:<uid>:jwt:<jti> and tracks the latest key pointer per user.
-func SaveSession(jti, userID, token string, category sys.CAtegory, expiresAt time.Time) (string, error) {
+func SaveSession(accountID, userID, token string, category util.CAtegory, expiresAt time.Time) (string, error) {
 	client := redisClient()
 	if client == nil {
 		return "", errRedisNotInit
@@ -45,10 +36,9 @@ func SaveSession(jti, userID, token string, category sys.CAtegory, expiresAt tim
 
 	ctx := context.Background()
 	prefix := category.GetAuthCookiePrefix()
-	sessionKey := buildSessionKey(prefix, userID, jti)
-	lookupKey := buildLookupKey(prefix, userID)
-	log.Debugf("sessionKey=%s ", sessionKey)
-	log.Debugf("lookupKey=%s", lookupKey)
+	sessionKey := buildSessionKey(prefix, accountID, userID)
+	lookupKey := buildLookupKey(prefix, accountID)
+	log.Infof("保存cookie %s %s", sessionKey, token)
 	pipe := client.TxPipeline()
 	pipe.Set(ctx, sessionKey, token, ttl)
 	pipe.Set(ctx, lookupKey, sessionKey, ttl)
@@ -60,7 +50,7 @@ func SaveSession(jti, userID, token string, category sys.CAtegory, expiresAt tim
 }
 
 // DeleteSession exposes login session deletion for logout flows.
-func DeleteSession(claims sys.JWTClaims) error {
+func DeleteSession(claims util.JWTClaims) error {
 	client := redisClient()
 	if client == nil {
 		return errRedisNotInit
@@ -78,19 +68,22 @@ func DeleteSession(claims sys.JWTClaims) error {
 }
 
 // 根据cookie获取用户信息，用在auth中间件
-func GetUserFromCookie(cookie string) (string, sys.CAtegory, *sys.JWTClaims, error) {
+func GetUserFromCookie(cookie string) (string, util.CAtegory, *util.JWTClaims, error) {
+	log.Debug3f("从redis获取cookie获取用户信息")
 	client := redisClient()
 	if client == nil {
+		log.Error(errRedisNotInit)
 		return "", "", nil, errRedisNotInit
 	}
 
-	claims, err := sys.ParseJWT(cookie)
+	claims, err := util.ParseJWT(cookie)
 	if err != nil {
+		log.Error(err)
 		return "", "", nil, err
 	}
 
 	sessionKey := buildSessionKey(string(claims.GetCategoryPrefix()), claims.GetUID(), claims.GetID())
-
+	log.Debug3f("session key: %s", sessionKey)
 	token, err := client.Get(context.Background(), sessionKey).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -101,7 +94,7 @@ func GetUserFromCookie(cookie string) (string, sys.CAtegory, *sys.JWTClaims, err
 	}
 
 	// token retrieved is the same JWT we issued; parsing validates signature/expiry
-	if _, err := sys.ParseJWT(token); err != nil {
+	if _, err := util.ParseJWT(token); err != nil {
 		log.Error(err)
 		return "", "", nil, err
 	}
@@ -110,7 +103,7 @@ func GetUserFromCookie(cookie string) (string, sys.CAtegory, *sys.JWTClaims, err
 }
 
 // 根据用户 UID 直接查询是否已有会话（用于无 cookie 登录找回）。
-func GetSessionCookieByUID(category sys.CAtegory, uid string) (string, *sys.JWTClaims, bool, error) {
+func GetSessionCookieByUID(category util.CAtegory, uid string) (string, *util.JWTClaims, bool, error) {
 	client := redisClient()
 	if client == nil {
 		return "", nil, false, errRedisNotInit
@@ -136,7 +129,7 @@ func GetSessionCookieByUID(category sys.CAtegory, uid string) (string, *sys.JWTC
 		return "", nil, false, err
 	}
 
-	claims, err := sys.ParseJWT(token)
+	claims, err := util.ParseJWT(token)
 	if err != nil {
 		log.Error(err)
 		return "", nil, false, err

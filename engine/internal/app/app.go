@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"flag"
@@ -7,23 +7,40 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/acer-red/home/engine/modb"
-	"github.com/acer-red/home/engine/storage"
-	"github.com/acer-red/home/engine/sys"
-	"github.com/acer-red/home/engine/web"
+	"github.com/acer-red/official/engine/service/cache"
+	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/service/web"
+	"github.com/acer-red/official/engine/util"
+	"github.com/redis/go-redis/v9"
 
 	log "github.com/tengfei-xy/go-log"
 	"gopkg.in/yaml.v3"
 )
 
-var app sys.App
+func Main() {
+	var app App
 
-func init_flag() {
+	init_env()
+	init_flag(&app)
+	init_config(&app)
+	init_log(&app)
+	init_redis(&app)
+	init_mongo(&app)
+	go quit()
+	init_web(&app)
+}
+func init_env() {
+	if os.Getenv(util.JwtEnvSecretKey) == "" {
+		panic("HOME_JWT_SECRET unset")
+	}
+}
+
+func init_flag(app *App) {
 	flag.IntVar(&app.Loglevel, "v", log.LEVELINFOINT, fmt.Sprintf("日志等级,%d-%d", log.LEVELFATALINT, log.LEVELDEBUG3INT))
 	flag.StringVar(&app.Configpath, "c", "config.yaml", "配置文件路径")
 	flag.Parse()
 }
-func init_config() {
+func init_config(app *App) {
 	// 读取配置文件
 	f, err := os.ReadFile(app.Configpath)
 	if err != nil {
@@ -39,12 +56,12 @@ func init_config() {
 	app.Config.Web.SetFullAddress()
 
 }
-func init_log() {
+func init_log(app *App) {
 	log.SetLevelInt(app.Loglevel)
 	_, g := log.GetLevel()
 	fmt.Printf("日志等级:%s\n", g)
 }
-func init_mongo() {
+func init_mongo(app *App) {
 	log.Infof("mongo连接中...")
 	str := fmt.Sprintf("mongodb://%s:%s@%s:%d/%s",
 		app.Config.DB.User,
@@ -60,18 +77,23 @@ func init_mongo() {
 	log.Infof("mongo连接成功!!")
 }
 
-func init_redis() {
+func init_redis(app *App) {
 	log.Infof("redis连接中...")
-	if err := storage.InitRedis(app.Config.Redis); err != nil {
+	if err := cache.Init(redis.Options{
+		Addr:     app.Config.Redis.Address,
+		Password: app.Config.Redis.Password,
+		DB:       app.Config.Redis.DB,
+	}); err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("redis连接成功!!")
 }
 
-func init_web() {
+func init_web(app *App) {
 
 	log.Infof("API: %s", app.Config.Web.Server.FullAddress)
 	log.Info("启动监听...")
+
 	web.Init(app.Config.Web)
 }
 func quit() {
@@ -89,23 +111,7 @@ func quit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	storage.CloseRedis()
+	cache.Close()
 
 	os.Exit(1)
-}
-func init_env() {
-	if os.Getenv(sys.JwtEnvSecretKey) == "" {
-		panic("HOME_JWT_SECRET unset")
-	}
-}
-func main() {
-	init_env()
-	init_flag()
-	init_config()
-	init_log()
-	init_redis()
-	init_mongo()
-	go quit()
-	init_web()
-
 }

@@ -1,7 +1,8 @@
-package sys
+package util
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -14,10 +15,11 @@ const (
 )
 
 type JWTClaims struct {
-	UserID   string   `json:"uid"`
-	Username string   `json:"username"`
-	Email    string   `json:"email"`
-	Category CAtegory `json:"category"`
+	AccountID string   `json:"aid"`
+	UserID    string   `json:"uid"`
+	Username  string   `json:"username"`
+	Email     string   `json:"email"`
+	Category  CAtegory `json:"category"`
 	jwt.RegisteredClaims
 }
 
@@ -33,24 +35,27 @@ func (j *JWTClaims) GetCategory() CAtegory {
 func (j *JWTClaims) GetCategoryPrefix() CAtegory {
 	return CAtegory(j.Category.GetAuthCookiePrefix())
 }
-
+func (j *JWTClaims) GetKeyName() string {
+	return fmt.Sprintf("%s:account:%s:%s", j.GetCategoryPrefix(), j.AccountID, j.UserID)
+}
 func getJWTSecret() []byte {
 	return []byte(os.Getenv(JwtEnvSecretKey))
 }
 
 // CreateJWT builds a signed JWT carrying basic user information.
-func CreateJWT(uuid, userID, username, email string, category CAtegory, ttl time.Duration) (string, error) {
+func CreateJWT(accountID, userID, username, email string, category CAtegory, ttl time.Duration) (string, error) {
 	if ttl <= 0 {
 		ttl = jwtDefaultValidity
 	}
 	now := time.Now()
 	claims := JWTClaims{
-		UserID:   userID,
-		Username: username,
-		Email:    email,
-		Category: category,
+		AccountID: accountID,
+		UserID:    userID,
+		Username:  username,
+		Email:     email,
+		Category:  category,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid,
+			ID:        userID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},

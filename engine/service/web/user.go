@@ -4,10 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/acer-red/home/engine/modb"
-	"github.com/acer-red/home/engine/sys"
-
-	"github.com/acer-red/home/engine/storage"
+	"github.com/acer-red/official/engine/service/cache"
+	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/util"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
@@ -15,7 +14,6 @@ import (
 func RouteUser(c *gin.Engine) {
 	v1 := c.Group("/api/v1")
 	{
-		v1.Use(outputRequestHeader())
 		v1User := v1.Group("/user")
 		{
 			v1User.POST("/register", userRegister)
@@ -44,16 +42,16 @@ func userRegister(c *gin.Context) {
 
 // issueRegisterCookie builds a JWT for the newly registered user and attaches it via Set-Cookie.
 func issueRegisterCookie(c *gin.Context, req modb.RequestUserRegister, id string) bool {
-	expireAt := sys.JWTDefaultExpireAt()
-	jti := sys.CreateUUID()
+	expireAt := util.JWTDefaultExpireAt()
+	jti := util.CreateUUID()
 
-	token, err := sys.CreateJWT(jti, id, req.Username, req.Email, req.Category, time.Until(expireAt))
+	token, err := util.CreateJWT(jti, id, req.Username, req.Email, req.Category, time.Until(expireAt))
 	if err != nil {
 		internalServerError(c)
 		return false
 	}
 
-	_, err = storage.SaveSession(jti, id, token, req.Category, expireAt)
+	_, err = cache.SaveSession(jti, id, token, req.Category, expireAt)
 	if err != nil {
 		internalServerError(c)
 		return false
@@ -90,7 +88,7 @@ func userRegisterVisitor(c *gin.Context) {
 	// 账号使用随机生成
 	req.RandomAccount()
 
-	id, api, err := req.Register(sys.RoleVisitor)
+	id, api, err := req.Register(util.RoleVisitor)
 	if err != nil {
 		internalServerError(c)
 		return
@@ -141,7 +139,7 @@ func userRegisterNormal(c *gin.Context) {
 		return
 	}
 
-	id, _, err := req.Register(sys.RoleNormal)
+	id, _, err := req.Register(util.RoleNormal)
 	if err != nil {
 		internalServerError(c)
 		return
@@ -202,15 +200,14 @@ func userLogin(c *gin.Context) {
 		return
 	}
 	if err = req.CheckNewDevice(); err != nil {
-		log.Error(err)
 		internalServerError(c)
 		return
 	}
 
-	jwtExpireAt := sys.JWTDefaultExpireAt()
+	jwtExpireAt := util.JWTDefaultExpireAt()
 
 	if _, err := c.Cookie("jwt"); err == http.ErrNoCookie {
-		if token, claims, found, err := storage.GetSessionCookieByUID(req.CategoryValue(), req.UserID()); err != nil {
+		if token, claims, found, err := cache.GetSessionCookieByUID(req.CategoryValue(), req.GetUserID()); err != nil {
 			log.Warnf("login lookup session failed account=%s err=%v", req.Account, err)
 		} else if found && claims != nil && claims.ExpiresAt != nil {
 			res := req.BuildLoginResponse()
@@ -238,7 +235,7 @@ func userLogout(c *gin.Context) {
 	// user := c.MustGet("user").(modb.User)
 	claims, exist := c.Get("claims")
 	if exist {
-		if err := storage.DeleteSession(claims.(sys.JWTClaims)); err != nil {
+		if err := cache.DeleteSession(claims.(util.JWTClaims)); err != nil {
 			log.Warnf("delete redis login session failed: %v", err)
 		}
 	}
@@ -277,8 +274,8 @@ func userRandomInfo(c *gin.Context) {
 	}
 
 	okData(c, response{
-		Nickname: sys.RandomNickname(),
-		Avatar:   sys.RandomAvatarBase64(sys.CreateUUID()),
+		Nickname: util.RandomNickname(),
+		Avatar:   util.RandomAvatarBase64(util.CreateUUID()),
 	})
 }
 func putUserProfile(c *gin.Context) {

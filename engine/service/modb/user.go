@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/acer-red/home/engine/storage"
-	"github.com/acer-red/home/engine/sys"
-	"github.com/google/uuid"
+	"github.com/acer-red/official/engine/service/cache"
+	"github.com/acer-red/official/engine/util"
 
 	"github.com/tengfei-xy/go-log"
 	"go.mongodb.org/mongo-driver/bson"
@@ -71,7 +70,7 @@ type RequestUserRegister struct {
 	CategoryStr string `json:"category"`
 	UID         string `json:"uid"`
 	PublicKey   string `json:"public_key"`
-	Category    sys.CAtegory
+	Category    util.CAtegory
 	Cookie      Cookie
 	profile     Profile
 	uoid        primitive.ObjectID
@@ -81,7 +80,7 @@ type RequestUserLogin struct {
 	Password string `json:"password"`
 	Category string `json:"category"`
 	UID      string `json:"uid"`
-	category sys.CAtegory
+	category util.CAtegory
 	m        bson.M
 }
 type RequestPutUserInfo struct {
@@ -93,7 +92,7 @@ type RequestPutUserInfo struct {
 // cookie
 func (c *Cookie) setLoginCookie() {
 	c.Key = "login"
-	c.Value = sys.CreateUUID()
+	c.Value = util.CreateUUID()
 	c.CeateAt = time.Now()
 	c.ExpiresAt = time.Now().AddDate(0, 1, 0)
 }
@@ -101,9 +100,9 @@ func (c *Cookie) setLoginCookie() {
 // 用户注册
 func (req *RequestUserRegister) outputSrc() {
 	switch req.Category {
-	case sys.CAtegoryIndex:
+	case util.CAtegoryOfficial:
 		log.Info("注册源:官网")
-	case sys.CAtegoryWT:
+	case util.CAtegoryWT:
 		log.Info("注册源:枫迹")
 	default:
 		log.Warn("注册源:未知")
@@ -171,7 +170,7 @@ func (req *RequestUserRegister) checkPasswd() bool {
 	return true
 }
 func (req *RequestUserRegister) CheckAndSetCatetory() error {
-	c, ok := sys.GetCategory(req.CategoryStr)
+	c, ok := util.GetCategory(req.CategoryStr)
 	if !ok {
 		return fmt.Errorf("无效的产品类别")
 	}
@@ -198,7 +197,7 @@ func (req *RequestUserRegister) Check() bool {
 	return true
 }
 func (req *RequestUserRegister) IsFromIndex() bool {
-	return req.Category == sys.CAtegoryIndex
+	return req.Category == util.CAtegoryOfficial
 }
 func (req *RequestUserRegister) Find() (bool, error) {
 	// 检查用户名是否存在
@@ -222,21 +221,21 @@ func (req *RequestUserRegister) Find() (bool, error) {
 	return false, nil
 }
 func (req *RequestUserRegister) RandomAccount() {
-	req.Username = sys.CreateUUID()
-	req.Password = sys.CreateUUID()
-	req.Email = fmt.Sprintf("%s@%s.com", sys.CreateUUID(), sys.CreateUUID())
+	req.Username = util.CreateUUID()
+	req.Password = util.CreateUUID()
+	req.Email = fmt.Sprintf("%s@%s.com", util.CreateUUID(), util.CreateUUID())
 }
 func (req *RequestUserRegister) BuildProfile() error {
 
-	data := bytes.NewBuffer(sys.RandomAvatar())
-	filename := fmt.Sprintf("%s.png", sys.CreateUUID())
+	data := bytes.NewBuffer(util.RandomAvatar())
+	filename := fmt.Sprintf("%s.png", util.CreateUUID())
 	if err := ImageAvatarCreate(filename, data, req.uoid); err != nil {
 		log.Error(err)
 		return err
 	}
 	req.profile = Profile{
 		// 用户名，暂时只支持中文
-		Nickname: sys.RandomNickname(),
+		Nickname: util.RandomNickname(),
 
 		Avatar: Avatar{
 			Name: filename,
@@ -282,10 +281,10 @@ func (req *RequestUserRegister) checkPublicKey() bool {
 	}
 	return len(decoded) == 32
 }
-func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
+func (req *RequestUserRegister) Register(role util.Role) (string, API, error) {
 	var err error
 
-	req.Password, err = sys.HashPassword(req.Password)
+	req.Password, err = util.HashPassword(req.Password)
 	if err != nil {
 		log.Error(err)
 		return "", API{}, err
@@ -296,7 +295,7 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 		return "", API{}, fmt.Errorf("不是有效的公钥")
 	}
 
-	id := sys.CreateUUID()
+	id := util.CreateUUID()
 
 	m := bson.D{
 		{Key: "id", Value: id},
@@ -313,7 +312,7 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 	// 添加产品API
 	api := newAPI()
 
-	if req.Category != sys.CAtegoryIndex {
+	if req.Category != util.CAtegoryOfficial {
 		m = append(m, bson.E{
 			Key: "products", Value: bson.M{
 				string(req.Category): bson.M{
@@ -324,8 +323,9 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 							"lastusedAt": api.LastUsedAt,
 							"used_times": api.UsedTims,
 						},
-					}},
-				"clients": []bson.M{{"uid": req.UID}},
+					},
+					"clients": []bson.M{{"uid": req.UID}},
+				},
 			}})
 	}
 
@@ -335,7 +335,7 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 		return "", API{}, err
 	}
 	req.uoid = result.InsertedID.(primitive.ObjectID)
-	if req.Category == sys.CAtegoryIndex {
+	if req.Category == util.CAtegoryOfficial {
 		req.Cookie.setLoginCookie()
 	}
 
@@ -344,7 +344,7 @@ func (req *RequestUserRegister) Register(role sys.Role) (string, API, error) {
 
 // 用户登陆
 func (req *RequestUserLogin) checkCatetory() error {
-	c, ok := sys.GetCategory(req.Category)
+	c, ok := util.GetCategory(req.Category)
 	if !ok {
 		return fmt.Errorf("无效的产品类别")
 	}
@@ -387,41 +387,45 @@ func (req *RequestUserLogin) Find() (bool, error) {
 	return true, nil
 }
 func (req *RequestUserLogin) ComparePassword() error {
-	return sys.ComparePassword(req.m["password"].(string), req.Password)
+	return util.ComparePassword(req.m["password"].(string), req.Password)
 }
-func (req *RequestUserLogin) CategoryValue() sys.CAtegory {
+func (req *RequestUserLogin) CategoryValue() util.CAtegory {
 	return req.category
 }
-func (req *RequestUserLogin) UserID() string {
+func (req *RequestUserLogin) GetAccountID() string {
 	if id, ok := req.m["id"].(string); ok {
 		return id
 	}
 	return ""
 }
+func (req *RequestUserLogin) GetUserID() string {
+	return req.UID
+}
 func (req *RequestUserLogin) CheckNewDevice() error {
 	log.Debugf("检查是否新设备UID=%s", req.UID)
-	if req.category == sys.CAtegoryIndex {
-		return nil
-	}
 
 	products, ok := req.m["products"].(bson.M)
 	if !ok || products == nil {
-		return fmt.Errorf("未找到产品信息")
+		log.Error(util.ErrStructure.Error())
+		return util.ErrStructure
 	}
 
 	product, ok := products[string(req.category)].(bson.M)
 	if !ok || product == nil {
-		return fmt.Errorf("未找到产品[%s]信息", req.category)
+		return util.ErrStructure
 	}
 
 	clientsVal, ok := product["clients"]
 	if !ok || clientsVal == nil {
-		return fmt.Errorf("未找到设备信息")
+		log.Error(util.ErrStructure.Error())
+		return util.ErrStructure
+
 	}
 
 	clients, ok := clientsVal.(primitive.A)
 	if !ok {
-		return fmt.Errorf("设备信息格式错误")
+		log.Error(util.ErrStructure.Error())
+		return util.ErrStructure
 	}
 
 	for _, c := range clients {
@@ -441,21 +445,20 @@ func (req *RequestUserLogin) CheckNewDevice() error {
 	log.Infof("新设备登录，添加设备UID=%s", req.UID)
 	return nil
 }
-func (req *RequestUserLogin) buildJWT(uuid string, expireAt time.Time) (string, error) {
+func (req *RequestUserLogin) buildJWT(accountID, uid string, expireAt time.Time) (string, error) {
 	ttl := time.Until(expireAt)
 	if ttl <= 0 {
 		ttl = loginJWTDuration
 	}
 
-	return sys.CreateJWT(uuid,
-		req.m["id"].(string),
+	return util.CreateJWT(accountID,
+		uid,
 		req.m["username"].(string),
 		req.m["email"].(string),
 		req.category,
 		ttl,
 	)
 }
-
 func (req *RequestUserLogin) BuildLoginResponse() ResponseGetUserInfo {
 	avatar := req.m["profile"].(bson.M)["avatar"].(bson.M)
 
@@ -497,15 +500,14 @@ func (req *RequestUserLogin) BuildLoginResponse() ResponseGetUserInfo {
 func (req *RequestUserLogin) Login(expireAt time.Time) (ResponseGetUserInfo, string, error) {
 
 	res := req.BuildLoginResponse()
-	jti := uuid.New().String()
 
-	token, err := req.buildJWT(jti, expireAt)
+	token, err := req.buildJWT(req.GetAccountID(), req.UID, expireAt)
 	if err != nil {
 		log.Error(err)
 		return ResponseGetUserInfo{}, "", err
 	}
 
-	if _, err := storage.SaveSession(jti, req.UserID(), token, req.category, expireAt); err != nil {
+	if _, err := cache.SaveSession(req.GetAccountID(), req.UID, token, req.category, expireAt); err != nil {
 		log.Error(err)
 		return ResponseGetUserInfo{}, "", err
 	}
@@ -529,7 +531,7 @@ func (req *RequestPutUserInfo) Update() error {
 	}
 
 	if req.Password != "" {
-		req.Password, err = sys.HashPassword(req.Password)
+		req.Password, err = util.HashPassword(req.Password)
 		if err != nil {
 			log.Error(err)
 			return err
@@ -581,7 +583,7 @@ func (u *User) UpdateAvatar(data io.Reader, ext string) error {
 		log.Error(err)
 		return err
 	}
-	filename := fmt.Sprintf("%s%s", sys.CreateUUID(), ext)
+	filename := fmt.Sprintf("%s%s", util.CreateUUID(), ext)
 
 	if err := u.createAuatar(filename, data); err != nil {
 		log.Error(err)
@@ -603,15 +605,15 @@ func (u *User) getAuatarOID() error {
 	err := db.Collection("fs.files").FindOne(context.TODO(), filter, findOptions).Decode(&resultDoc)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return sys.ErrNoFound
+			return util.ErrNoFound
 		} else {
 			log.Error(err)
-			return sys.ErrInternalServer
+			return util.ErrInternalServer
 		}
 	}
 	objectID, ok := resultDoc["_id"].(primitive.ObjectID)
 	if !ok {
-		return sys.ErrInternalServer
+		return util.ErrInternalServer
 	}
 	u.auatarOID = objectID
 	return nil
@@ -662,7 +664,7 @@ func (u *User) Delete() error {
 // 根据API获取用户信息，用在auth中间件
 func GetUserFromAPI(api string) (User, bool, error) {
 	log.Debug3f("API验证:%s", api)
-	filter := bson.M{fmt.Sprintf("%s.%s.%s", "products", string(sys.CAtegoryWT), "api"): bson.M{"$elemMatch": bson.M{"apikey": api}}}
+	filter := bson.M{fmt.Sprintf("%s.%s.%s", "products", string(util.CAtegoryWT), "api"): bson.M{"$elemMatch": bson.M{"apikey": api}}}
 	var m bson.M
 	var apis []API
 
@@ -675,7 +677,7 @@ func GetUserFromAPI(api string) (User, bool, error) {
 		return User{}, false, err
 	}
 
-	for _, api := range m["products"].(bson.M)[string(sys.CAtegoryWT)].(bson.M)["api"].(primitive.A) {
+	for _, api := range m["products"].(bson.M)[string(util.CAtegoryWT)].(bson.M)["api"].(primitive.A) {
 		apis = append(apis, API{
 			APIKey:     api.(bson.M)["apikey"].(string),
 			ExpiresAt:  api.(bson.M)["expiresAt"].(primitive.DateTime).Time(),
@@ -703,7 +705,7 @@ func GetUserFromAPI(api string) (User, bool, error) {
 }
 
 // 根据ID获取用户信息
-func GetUserByIDAndCategory(uid string, category sys.CAtegory) (User, bool, error) {
+func GetUserByIDAndCategory(uid string, category util.CAtegory) (User, bool, error) {
 	filter := bson.M{"id": uid}
 	var m bson.M
 
@@ -733,7 +735,7 @@ func GetUserByIDAndCategory(uid string, category sys.CAtegory) (User, bool, erro
 		},
 	}
 
-	if category != sys.CAtegoryIndex {
+	if category != util.CAtegoryOfficial {
 		if products, ok := m["products"].(bson.M); ok {
 			if data, ok := products[string(category)].(bson.M); ok {
 				if apis, ok := data["api"]; ok {
@@ -759,7 +761,7 @@ func setAvatarUrl(f string) string {
 }
 func newAPI() API {
 	return API{
-		APIKey:     sys.CreateAPIKey(),
+		APIKey:     util.CreateAPIKey(),
 		ExpiresAt:  time.Now().AddDate(0, 3, 0),
 		LastUsedAt: time.Now(),
 		UsedTims:   0,
