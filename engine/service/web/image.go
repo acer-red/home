@@ -2,6 +2,7 @@ package web
 
 import (
 	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/service/web/common"
 	"github.com/acer-red/official/engine/util"
 
 	"github.com/gin-gonic/gin"
@@ -31,13 +32,13 @@ func ImageGet(g *gin.Context) {
 	res, err := modb.ImageGet(name)
 
 	if err == util.ErrNoFound {
-		notFound(g)
+		common.NotFound(g)
 		return
 	}
 	if err != nil {
-		internalServerError(g)
+		common.InternalServerError(g)
 		return
 	}
 
-	okImage(g, res)
+	common.OkImage(g, res)
 }

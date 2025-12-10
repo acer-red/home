@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/service/web/common"
 	"github.com/acer-red/official/engine/util"
 
 	"github.com/gin-gonic/gin"
@@ -43,7 +44,7 @@ func fbPost(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil {
 		log.Error(err)
-		badRequest(c)
+		common.BadRequest(c)
 		return
 	}
 
@@ -59,7 +60,7 @@ func fbPost(c *gin.Context) {
 		file, err := deviceFiles[0].Open()
 		if err != nil {
 			log.Error(err)
-			badRequest(c)
+			common.BadRequest(c)
 			return
 		}
 		defer file.Close()
@@ -75,7 +76,7 @@ func fbPost(c *gin.Context) {
 			file, err := fileHeader.Open()
 			if err != nil {
 				log.Error(err)
-				badRequest(c)
+				common.BadRequest(c)
 				return
 			}
 			defer file.Close()
@@ -86,12 +87,12 @@ func fbPost(c *gin.Context) {
 	}
 
 	if err := modb.FeedbackPost(&req); err != nil {
-		internalServerError(c)
+		common.InternalServerError(c)
 		return
 	}
 
 	log.Infof("创建反馈成功 %s", res.ID)
-	okData(c, res)
+	common.OkData(c, res)
 }
 func atoi(s string) int {
 	i, _ := strconv.Atoi(s)
@@ -109,10 +110,10 @@ func fbsGet(g *gin.Context) {
 	})
 	if err != nil {
 		log.Error(err)
-		internalServerError(g)
+		common.InternalServerError(g)
 		return
 	}
-	okData(g, feedbacks)
+	common.OkData(g, feedbacks)
 }
 
 // 	g.JSON(util.StatusOK, response{Feedbacks: feedbacks})

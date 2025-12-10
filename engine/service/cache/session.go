@@ -57,8 +57,8 @@ func DeleteSession(claims util.JWTClaims) error {
 	}
 	ctx := context.Background()
 	prefix := claims.GetCategoryPrefix()
-	sessionKey := buildSessionKey(string(prefix), claims.GetUID(), claims.GetID())
-	lookupKey := buildLookupKey(string(prefix), claims.GetUID())
+	sessionKey := claims.GetKeyName()
+	lookupKey := buildLookupKey(string(prefix), claims.AccountID)
 
 	pipe := client.TxPipeline()
 	pipe.Del(ctx, sessionKey)
@@ -82,7 +82,7 @@ func GetUserFromCookie(cookie string) (string, util.CAtegory, *util.JWTClaims, e
 		return "", "", nil, err
 	}
 
-	sessionKey := buildSessionKey(string(claims.GetCategoryPrefix()), claims.GetUID(), claims.GetID())
+	sessionKey := claims.GetKeyName()
 	log.Debug3f("session key: %s", sessionKey)
 	token, err := client.Get(context.Background(), sessionKey).Result()
 	if err != nil {
@@ -135,7 +135,7 @@ func GetSessionCookieByUID(category util.CAtegory, uid string) (string, *util.JW
 		return "", nil, false, err
 	}
 
-	expectedSessionKey := buildSessionKey(prefix, claims.GetUID(), claims.GetID())
+	expectedSessionKey := claims.GetKeyName()
 	if sessionKey != expectedSessionKey {
 		return "", nil, false, fmt.Errorf("session key mismatch")
 	}

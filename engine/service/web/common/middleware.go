@@ -1,4 +1,4 @@
-package web
+package common
 
 import (
 	"net/http"
@@ -23,7 +23,7 @@ func getHost(origin string) string {
 	return uri.Host
 }
 
-func cors(origin string) gin.HandlerFunc {
+func Cors(origin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Set("cors_origin", getHost(origin))
 
@@ -40,15 +40,19 @@ func cors(origin string) gin.HandlerFunc {
 		c.Next()
 	}
 }
-func auth() gin.HandlerFunc {
+func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		u, exist, err := authCookie(c)
 		if err != nil {
-			internalServerError(c)
+			InternalServerError(c)
 			return
 		}
 		if exist {
+			if u.IsDeleted {
+				c.AbortWithStatus(http.StatusGone)
+				return
+			}
 			log.Debug("cookie通过")
 			c.Set("user", u)
 			c.Next()
@@ -57,10 +61,14 @@ func auth() gin.HandlerFunc {
 
 		u, exist, err = authAPI(c)
 		if err != nil {
-			internalServerError(c)
+			InternalServerError(c)
 			return
 		}
 		if exist {
+			if u.IsDeleted {
+				c.AbortWithStatus(http.StatusGone)
+				return
+			}
 			log.Debug("API通过")
 			c.Set("user", u)
 			c.Next()
@@ -68,7 +76,7 @@ func auth() gin.HandlerFunc {
 		}
 
 		log.Debug("无任何认证方式")
-		unauthorized(c)
+		Unauthorized(c)
 
 	}
 }

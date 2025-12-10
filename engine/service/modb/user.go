@@ -60,8 +60,8 @@ type User struct {
 	CeateAt   time.Time          `bson:"createAt" json:"createAt"`
 	Profile   Profile            `bson:"profile" json:"profile"`
 	// UTime    time.Time       `bson:"updateAt"`
-	Cookies []Cookie `bson:"cookies" json:"-"`
-	API     []API    `json:"api"`
+	API       []API `json:"api"`
+	IsDeleted bool  `bson:"-" json:"-"`
 }
 type RequestUserRegister struct {
 	Username    string `json:"username"`
@@ -220,6 +220,99 @@ func (req *RequestUserRegister) Find() (bool, error) {
 	}
 	return false, nil
 }
+
+// FindUser 查找用户，返回用户对象
+func (req *RequestUserRegister) FindUser() (*User, bool, error) {
+	filter := bson.M{"$or": []bson.M{
+		{"username": req.Username},
+		{"email": req.Email},
+	}}
+	var m bson.M
+	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&m)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	profile := m["profile"].(bson.M)
+	avatar := profile["avatar"].(bson.M)
+
+	u := &User{
+		UOID:     m["_id"].(primitive.ObjectID),
+		ID:       m["id"].(string),
+		Username: m["username"].(string),
+		Email:    m["email"].(string),
+		CeateAt:  m["createAt"].(primitive.DateTime).Time(),
+		Profile: Profile{
+			Nickname: profile["nickname"].(string),
+			Avatar: Avatar{
+				Name: avatar["name"].(string),
+				URL:  avatar["url"].(string),
+			},
+		},
+	}
+
+	if req.Category != util.CAtegoryOfficial {
+		if products, ok := m["products"].(bson.M); ok {
+			if data, ok := products[string(req.Category)].(bson.M); ok {
+				if _, ok := data["deleted_at"]; ok {
+					u.IsDeleted = true
+				}
+			}
+		}
+	}
+
+	return u, true, nil
+}
+
+// Reactivate 重新激活用户
+func (req *RequestUserRegister) Reactivate(u *User) (string, API, error) {
+	var err error
+	req.Password, err = util.HashPassword(req.Password)
+	if err != nil {
+		return "", API{}, err
+	}
+
+	req.uoid = u.UOID
+
+	api := newAPI()
+
+	keyDeleted := fmt.Sprintf("products.%s.deleted_at", string(req.Category))
+	keyApi := fmt.Sprintf("products.%s.api", string(req.Category))
+	keyClients := fmt.Sprintf("products.%s.clients", string(req.Category))
+
+	filter := bson.M{"_id": u.UOID}
+	update := bson.M{
+		"$set": bson.M{
+			"password":   req.Password,
+			"public_key": []byte(req.PublicKey),
+			"updateAt":   time.Now(),
+		},
+		"$unset": bson.M{
+			keyDeleted: "",
+		},
+		"$push": bson.M{
+			keyApi: bson.M{
+				"apikey":     api.APIKey,
+				"expiresAt":  api.ExpiresAt,
+				"lastusedAt": api.LastUsedAt,
+				"used_times": api.UsedTims,
+			},
+		},
+		"$addToSet": bson.M{
+			keyClients: bson.M{"uid": req.UID},
+		},
+	}
+
+	_, err = db.Collection("user").UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		return "", API{}, err
+	}
+
+	return u.ID, api, nil
+}
 func (req *RequestUserRegister) RandomAccount() {
 	req.Username = util.CreateUUID()
 	req.Password = util.CreateUUID()
@@ -305,9 +398,7 @@ func (req *RequestUserRegister) Register(role util.Role) (string, API, error) {
 		{Key: "email", Value: req.Email},
 		{Key: "createAt", Value: time.Now()},
 		{Key: "updateAt", Value: time.Now()},
-		{Key: "cookies", Value: []Cookie{
-			req.Cookie,
-		}}, {Key: "public_key", Value: []byte(req.PublicKey)}}
+		{Key: "public_key", Value: []byte(req.PublicKey)}}
 
 	// 添加产品API
 	api := newAPI()
@@ -376,6 +467,11 @@ func (req *RequestUserLogin) Find() (bool, error) {
 		{"username": req.Account},
 		{"email": req.Account},
 	}}
+
+	// 检查是否已解绑
+	key := fmt.Sprintf("products.%s.deleted_at", string(req.category))
+	filter[key] = bson.M{"$exists": false}
+
 	err := db.Collection("user").FindOne(context.TODO(), filter).Decode(&req.m)
 
 	if err == mongo.ErrNoDocuments {
@@ -555,7 +651,7 @@ func (u *User) IsNoID() bool {
 }
 func (u *User) DeleteCookie() error {
 	filter := bson.M{"_id": u.UOID}
-	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "cookies", Value: bson.M{"key": "login"}}}}}
+	update := bson.D{{Key: "$pull", Value: bson.D{{Key: "", Value: bson.M{"key": "login"}}}}}
 	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
 	if err != nil {
 		log.Error(err)
@@ -677,7 +773,13 @@ func GetUserFromAPI(api string) (User, bool, error) {
 		return User{}, false, err
 	}
 
-	for _, api := range m["products"].(bson.M)[string(util.CAtegoryWT)].(bson.M)["api"].(primitive.A) {
+	productData := m["products"].(bson.M)[string(util.CAtegoryWT)].(bson.M)
+	isDeleted := false
+	if _, ok := productData["deleted_at"]; ok {
+		isDeleted = true
+	}
+
+	for _, api := range productData["api"].(primitive.A) {
 		apis = append(apis, API{
 			APIKey:     api.(bson.M)["apikey"].(string),
 			ExpiresAt:  api.(bson.M)["expiresAt"].(primitive.DateTime).Time(),
@@ -700,7 +802,8 @@ func GetUserFromAPI(api string) (User, bool, error) {
 				URL:  avatar["url"].(string),
 			},
 		},
-		API: apis,
+		API:       apis,
+		IsDeleted: isDeleted,
 	}, true, nil
 }
 
@@ -722,6 +825,7 @@ func GetUserByIDAndCategory(uid string, category util.CAtegory) (User, bool, err
 	avatar := profile["avatar"].(bson.M)
 
 	u := User{
+		UOID:     m["_id"].(primitive.ObjectID),
 		ID:       m["id"].(string),
 		Username: m["username"].(string),
 		Email:    m["email"].(string),
@@ -738,6 +842,9 @@ func GetUserByIDAndCategory(uid string, category util.CAtegory) (User, bool, err
 	if category != util.CAtegoryOfficial {
 		if products, ok := m["products"].(bson.M); ok {
 			if data, ok := products[string(category)].(bson.M); ok {
+				if _, ok := data["deleted_at"]; ok {
+					u.IsDeleted = true
+				}
 				if apis, ok := data["api"]; ok {
 					for _, api := range apis.(primitive.A) {
 						u.API = append(u.API, API{
@@ -766,4 +873,18 @@ func newAPI() API {
 		LastUsedAt: time.Now(),
 		UsedTims:   0,
 	}
+}
+
+// UnbindApp 删除用户在某个应用下的所有数据
+func (u *User) UnbindApp(category util.CAtegory) error {
+	key := fmt.Sprintf("products.%s.deleted_at", string(category))
+	filter := bson.M{"_id": u.UOID}
+	update := bson.M{"$set": bson.M{key: time.Now()}}
+
+	_, err := db.Collection("user").UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
 }

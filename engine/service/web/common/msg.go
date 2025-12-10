@@ -1,4 +1,4 @@
-package web
+package common
 
 import (
 	"bytes"
@@ -49,32 +49,22 @@ func msgCreated(msg ...string) message {
 	return m
 }
 
-//	func msgNoParam(msg ...string) message {
-//		m := message{Err: mseqNoParam}
-//		if len(msg) > 0 {
-//			m.Msg = msg[0]
-//		} else {
-//			m.Msg = mstrNoParam
-//		}
-//		return m
-//	}
-
-func ok(g *gin.Context) {
+func Ok(g *gin.Context) {
 	d := msgOK()
 	log.Debug3j(d)
 	g.JSON(http.StatusOK, d)
 }
 
-func okData(g *gin.Context, obj any) {
+func OkData(g *gin.Context, obj any) {
 	d := msgOK().setData(obj)
 	log.Debug3j(d)
 	g.JSON(http.StatusOK, d)
 }
 
-func okImage(g *gin.Context, data bytes.Buffer) {
+func OkImage(g *gin.Context, data bytes.Buffer) {
 	name := g.Param("file")
 	if !strings.Contains(name, ".") {
-		badRequest(g)
+		BadRequest(g)
 		return
 	}
 	fotmat := strings.ToLower(strings.Split(name, ".")[1])
@@ -89,25 +79,25 @@ func okImage(g *gin.Context, data bytes.Buffer) {
 	}
 }
 
-func badRequest(g *gin.Context) {
+func BadRequest(g *gin.Context) {
 	g.AbortWithStatus(http.StatusBadRequest)
 }
-func internalServerError(g *gin.Context) {
+func InternalServerError(g *gin.Context) {
 	g.AbortWithStatus(http.StatusInternalServerError)
 }
 
-func notFound(g *gin.Context) {
+func NotFound(g *gin.Context) {
 	g.AbortWithStatus(http.StatusNotFound)
 }
-func conflict(g *gin.Context) {
+func Conflict(g *gin.Context) {
 	g.AbortWithStatus(http.StatusConflict)
 }
-func createdData(g *gin.Context, obj any) {
+func CreatedData(g *gin.Context, obj any) {
 	d := msgCreated().setData(obj)
 	log.Debug3j(d)
 	g.JSON(http.StatusCreated, d)
 }
 
-func unauthorized(g *gin.Context) {
+func Unauthorized(g *gin.Context) {
 	g.AbortWithStatus(http.StatusUnauthorized)
 }
