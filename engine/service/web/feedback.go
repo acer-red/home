@@ -1,18 +1,17 @@
 package web
 
 import (
-	"fmt"
 	"io"
-	"path/filepath"
+	"net/http"
 	"strconv"
 
-	"github.com/acer-red/official/engine/service/modb"
-	"github.com/acer-red/official/engine/service/web/common"
-	"github.com/acer-red/official/engine/util"
+	"github.com/acer-red/official/engine/service/db"
 
+	"github.com/acer-red/official/engine/service/web/error"
+	Err "github.com/acer-red/official/engine/service/web/error"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	log "github.com/tengfei-xy/go-log"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func RouteFeedback(g *gin.Engine) {
@@ -33,42 +32,52 @@ func fbPost(c *gin.Context) {
 	type response struct {
 		ID string `json:"id"`
 	}
-	res := response{
-		ID: util.CreateUUID(),
-	}
 
-	var req modb.RequestFeedbackPost
-	req.UOID = c.MustGet("uoid").(primitive.ObjectID)
-	req.FBID = res.ID
+	var req db.RequestFeedbackPost
+
+	if pid, ok := c.Get("product_id"); ok {
+		req.ProductID = pid.(uuid.UUID)
+	} else {
+		log.Error("product_id not found in context")
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
 
 	form, err := c.MultipartForm()
 	if err != nil {
 		log.Error(err)
-		common.BadRequest(c)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 		return
 	}
 
-	req.FbType = atoi(form.Value["fb_type"][0])
-	req.Title = form.Value["title"][0]
-	req.Content = form.Value["content"][0]
-	req.IsPublic = atob(form.Value["is_public"][0])
+	if val, ok := form.Value["fb_type"]; ok && len(val) > 0 {
+		req.FbType = atoi(val[0])
+	}
+	if val, ok := form.Value["title"]; ok && len(val) > 0 {
+		req.Title = val[0]
+	}
+	if val, ok := form.Value["content"]; ok && len(val) > 0 {
+		req.Content = val[0]
+	}
+	if val, ok := form.Value["is_public"]; ok && len(val) > 0 {
+		req.IsPublic = atob(val[0])
+	}
+
 	deviceFiles := form.File["device_file"]
 	imageFiles := form.File["images"]
 
-	// 如果有设备文件信息，则上传
 	if len(deviceFiles) > 0 {
 		file, err := deviceFiles[0].Open()
 		if err != nil {
 			log.Error(err)
-			common.BadRequest(c)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 			return
 		}
 		defer file.Close()
-		req.DeviceFileName = fmt.Sprintf("%s_device.txt", res.ID)
+		req.DeviceFileName = deviceFiles[0].Filename
 		req.DeviceFile = file
 	}
 
-	// 如果有图片信息，则上传
 	if len(imageFiles) > 0 {
 		req.Images = make([]io.Reader, len(imageFiles))
 		req.ImagesName = make([]string, len(imageFiles))
@@ -76,87 +85,46 @@ func fbPost(c *gin.Context) {
 			file, err := fileHeader.Open()
 			if err != nil {
 				log.Error(err)
-				common.BadRequest(c)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 				return
 			}
 			defer file.Close()
-			req.ImagesName[i] = fmt.Sprintf("%s_fb_%d%s", res.ID, i, filepath.Ext(fileHeader.Filename))
+			req.ImagesName[i] = fileHeader.Filename
 			log.Info("image file")
 			req.Images[i] = file
 		}
 	}
 
-	if err := modb.FeedbackPost(&req); err != nil {
-		common.InternalServerError(c)
+	fbID, err := db.FeedbackPost(&req)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
+	res := response{ID: fbID.String()}
+
 	log.Infof("创建反馈成功 %s", res.ID)
-	common.OkData(c, res)
+	c.JSON(http.StatusOK, error.OK.Data(res))
 }
 func atoi(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i
 }
+
 func atob(s string) bool {
 	b, _ := strconv.ParseBool(s)
 	return b
 }
 
-func fbsGet(g *gin.Context) {
+func fbsGet(c *gin.Context) {
 	log.Infof("获取反馈列表(已公开)")
-	feedbacks, err := modb.FeedbacksGet(modb.FBFilter{
-		Text: g.Query("text"),
+	feedbacks, err := db.FeedbacksGet(db.FBFilter{
+		Text: c.Query("text"),
 	})
 	if err != nil {
 		log.Error(err)
-		common.InternalServerError(g)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	common.OkData(g, feedbacks)
+	c.JSON(http.StatusOK, error.OK.Data(feedbacks))
 }
-
-// 	g.JSON(util.StatusOK, response{Feedbacks: feedbacks})
-// }
-
-// func fbGet(g *gin.Context) {
-// 	type response struct {
-// 		Feedback modb.Feedback `json:"feedback"`
-// 	}
-
-// 	goid := g.MustGet("goid").(primitive.ObjectID)
-// 	fbid := g.Param("fbid")
-
-// 	feedback, err := modb.FeedbackGet(goid, fbid)
-// 	if err != nil {
-// 		log.Error(err)
-// 		badRequest(g)
-// 		return
-// 	}
-
-// 	g.JSON(util.StatusOK, response{Feedback: feedback})
-// }
-// func fbPut(g *gin.Context) {
-// 	type response struct {
-// 		Feedback modb.Feedback `json:"feedback"`
-// 	}
-
-// 	goid := g.MustGet("goid").(primitive.ObjectID)
-// 	fbid := g.Param("fbid")
-
-// 	var req modb.RequestFeedbackPut
-// 	if err := g.ShouldBindBodyWithJSON(&req); err != nil {
-// 		log.Error(err)
-// 		badRequest(g)
-// 		return
-// 	}
-
-// 	feedback, err := modb.FeedbackPut(goid, fbid, &req)
-// 	if err != nil {
-// 		log.Error(err)
-// 		badRequest(g)
-// 		return
-// 	}
-
-// 	g.JSON(util.StatusOK, response{Feedback: feedback})
-// }

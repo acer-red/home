@@ -1,8 +1,10 @@
 package user
 
 import (
-	"github.com/acer-red/official/engine/service/modb"
-	"github.com/acer-red/official/engine/service/web/common"
+	"net/http"
+
+	"github.com/acer-red/official/engine/service/db"
+	Err "github.com/acer-red/official/engine/service/web/error"
 	"github.com/acer-red/official/engine/util"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
@@ -11,23 +13,24 @@ import (
 func getUserInfo(c *gin.Context) {
 	log.Info("用户获取信息")
 
-	user := c.MustGet("user").(modb.User)
-	common.OkData(c, user)
+	user := c.MustGet("user").(db.User)
+	apis, _ := db.GetAPIsForUser(user.ID)
+	c.JSON(http.StatusOK, Err.OK.Data(user.ToResponse(apis)))
 }
 func putUserInfo(c *gin.Context) {
 	log.Info("用户修改信息")
-	var req modb.RequestPutUserInfo
+	var req db.RequestPutUserInfo
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
-		common.BadRequest(c)
+		c.AbortWithStatusJSON(http.StatusBadRequest, Err.DataParseFailed)
 		return
 	}
-	req.UOID = c.MustGet("user").(modb.User).UOID
+	req.UserID = c.MustGet("user").(db.User).ID.String()
 
 	if err := req.Update(); err != nil {
-		common.InternalServerError(c)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	common.Ok(c)
+	c.JSON(http.StatusOK, Err.OK.JSON())
 }
 func userRandomInfo(c *gin.Context) {
 	log.Info("用户随机信息")
@@ -36,9 +39,8 @@ func userRandomInfo(c *gin.Context) {
 		Nickname string `json:"nickname"`
 		Avatar   string `json:"avatar"`
 	}
-
-	common.OkData(c, response{
+	c.JSON(http.StatusOK, Err.OK.Data(response{
 		Nickname: util.RandomNickname(),
-		Avatar:   util.RandomAvatarBase64(util.CreateUUID()),
-	})
+		Avatar:   util.RandomAvatarBase64(),
+	}))
 }

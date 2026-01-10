@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/acer-red/official/engine/service/cache"
-	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/service/db"
 	"github.com/acer-red/official/engine/service/web/common"
+	Err "github.com/acer-red/official/engine/service/web/error"
 	"github.com/acer-red/official/engine/util"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
@@ -15,45 +16,47 @@ import (
 func userAutoLogin(c *gin.Context) {
 	log.Info("用户自动登陆")
 
-	user := c.MustGet("user").(modb.User)
-	common.OkData(c, user)
+	user := c.MustGet("user").(db.User)
+	apis, _ := db.GetAPIsForUser(user.ID)
+	c.JSON(http.StatusOK, Err.OK.Data(user.ToResponse(apis)))
+
 }
 func userLogin(c *gin.Context) {
-	var req modb.RequestUserLogin
+	var req db.RequestUserLogin
 	log.Info("用户登陆")
 
 	if err := c.ShouldBindBodyWithJSON(&req); err != nil {
 		log.Warnf("login bind body failed: %v", err)
-		common.BadRequest(c)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 		return
 	}
 
 	if ok := req.Check(); !ok {
 		log.Warnf("login param check failed account=%s category=%s", req.Account, req.Category)
-		common.BadRequest(c)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 		return
 	}
 
 	if ok, err := req.Find(); err != nil {
 		log.Errorf("login find user error account=%s err=%v", req.Account, err)
-		common.InternalServerError(c)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 
 	} else if !ok {
 		log.Warnf("login user not found account=%s", req.Account)
-		common.BadRequest(c)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 		return
 	}
 
 	err := req.ComparePassword()
 	if err != nil {
 		log.Warnf("login password mismatch account=%s err=%v", req.Account, err)
-		common.BadRequest(c)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 		return
 	}
 	if err = req.CheckNewDevice(); err != nil {
 		log.Errorf("userLogin CheckNewDevice error: %v", err)
-		common.InternalServerError(c)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
@@ -65,7 +68,7 @@ func userLogin(c *gin.Context) {
 		} else if found && claims != nil && claims.ExpiresAt != nil {
 			res := req.BuildLoginResponse()
 			common.SetJWTCookie(c, token, claims.ExpiresAt.Time)
-			common.OkData(c, res)
+			c.JSON(http.StatusOK, Err.OK.Data(res))
 			return
 		}
 	}
@@ -74,19 +77,19 @@ func userLogin(c *gin.Context) {
 
 	if err != nil {
 		log.Errorf("userLogin Login error: %v", err)
-		common.InternalServerError(c)
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
 	// 为请求头设置set-cookie
 	common.SetJWTCookie(c, token, jwtExpireAt)
-	common.OkData(c, res)
+	c.JSON(http.StatusOK, Err.OK.Data(res))
 
 }
 func userLogout(c *gin.Context) {
 	log.Info("用户注销")
 
-	// user := c.MustGet("user").(modb.User)
+	// user := c.MustGet("user").(db.User)
 	claims, exist := c.Get("claims")
 	if exist {
 		if err := cache.DeleteSession(claims.(util.JWTClaims)); err != nil {
@@ -96,5 +99,5 @@ func userLogout(c *gin.Context) {
 
 	// 向客户端删除cookie
 	common.SetJWTCookie(c, "", time.Now())
-	common.OkData(c, nil)
+	c.JSON(http.StatusOK, Err.OK)
 }

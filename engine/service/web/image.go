@@ -1,10 +1,12 @@
 package web
 
 import (
-	"github.com/acer-red/official/engine/service/modb"
-	"github.com/acer-red/official/engine/service/web/common"
-	"github.com/acer-red/official/engine/util"
+	"net/http"
+	"strings"
 
+	"github.com/acer-red/official/engine/service/db"
+	Err "github.com/acer-red/official/engine/service/web/error"
+	"github.com/acer-red/official/engine/util"
 	"github.com/gin-gonic/gin"
 	log "github.com/tengfei-xy/go-log"
 )
@@ -26,19 +28,33 @@ func RouterImageGet(g *gin.Engine) {
 //			b.POST("", ImagePost)
 //		}
 //	}
-func ImageGet(g *gin.Context) {
+func ImageGet(c *gin.Context) {
 	log.Infof("获取图片")
-	name := g.Param("file")
-	res, err := modb.ImageGet(name)
+	name := c.Param("file")
+	if !strings.Contains(name, ".") {
+		c.AbortWithStatusJSON(http.StatusBadRequest, Err.FormatError.JSON())
+		return
+	}
+
+	data, err := db.ImageGet(name)
 
 	if err == util.ErrNoFound {
-		common.NotFound(g)
+		c.AbortWithStatusJSON(http.StatusNotFound, Err.NoFound.JSON())
 		return
 	}
 	if err != nil {
-		common.InternalServerError(g)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Err.InternalServer.JSON())
 		return
 	}
 
-	common.OkImage(g, res)
+	fotmat := strings.ToLower(strings.Split(name, ".")[1])
+	switch fotmat {
+	case "png":
+		c.Data(http.StatusOK, "image/png", data.Bytes())
+	case "jpg":
+	case "jpeg":
+		c.Data(http.StatusOK, "image/jpeg", data.Bytes())
+	default:
+		c.AbortWithStatusJSON(http.StatusBadRequest, Err.UnknownType.JSON())
+	}
 }

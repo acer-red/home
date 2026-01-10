@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/acer-red/official/engine/service/cache"
-	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/service/db"
 	"github.com/acer-red/official/engine/service/web"
 	"github.com/acer-red/official/engine/util"
 	"github.com/redis/go-redis/v9"
@@ -25,7 +25,7 @@ func Main() {
 	init_config(&app)
 	init_log(&app)
 	init_redis(&app)
-	init_mongo(&app)
+	init_db(&app)
 	go quit()
 	init_web(&app)
 }
@@ -61,20 +61,20 @@ func init_log(app *App) {
 	_, g := log.GetLevel()
 	fmt.Printf("日志等级:%s\n", g)
 }
-func init_mongo(app *App) {
-	log.Infof("mongo连接中...")
-	str := fmt.Sprintf("mongodb://%s:%s@%s:%d/%s",
-		app.Config.DB.User,
-		app.Config.DB.Password,
+func init_db(app *App) {
+	log.Infof("数据库连接中...")
+	str := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=Asia/Shanghai",
 		app.Config.DB.Address,
 		app.Config.DB.Port,
+		app.Config.DB.User,
+		app.Config.DB.Password,
 		app.Config.DB.Database,
 	)
-	err := modb.Init(str)
+	err := db.Init(str)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("mongo连接成功!!")
+	log.Infof("数据库连接成功!!")
 }
 
 func init_redis(app *App) {
@@ -107,7 +107,7 @@ func quit() {
 	sig := <-sigs
 	fmt.Println(sig)
 
-	err := modb.Disconnect()
+	err := db.Disconnect()
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	"github.com/acer-red/official/engine/service/cache"
-	"github.com/acer-red/official/engine/service/modb"
+	"github.com/acer-red/official/engine/service/db"
+	Err "github.com/acer-red/official/engine/service/web/error"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	log "github.com/tengfei-xy/go-log"
 )
 
@@ -43,73 +45,81 @@ func Cors(origin string) gin.HandlerFunc {
 func Auth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 
-		u, exist, err := authCookie(c)
+		u, pid, exist, err := authCookie(c)
 		if err != nil {
-			InternalServerError(c)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, Err.Unauthorized.JSON())
+
 			return
 		}
 		if exist {
 			if u.IsDeleted {
-				c.AbortWithStatus(http.StatusGone)
+				c.AbortWithStatusJSON(http.StatusGone, Err.AlreadyDeleted.JSON())
 				return
 			}
 			log.Debug("cookie通过")
 			c.Set("user", u)
+			if pid != nil {
+				c.Set("product_id", *pid)
+			}
 			c.Next()
 			return
 		}
 
-		u, exist, err = authAPI(c)
+		u, pid, exist, err = authAPI(c)
 		if err != nil {
-			InternalServerError(c)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, Err.Unauthorized.JSON())
+
 			return
 		}
 		if exist {
 			if u.IsDeleted {
-				c.AbortWithStatus(http.StatusGone)
+				c.AbortWithStatusJSON(http.StatusGone, Err.AlreadyDeleted.JSON())
 				return
 			}
 			log.Debug("API通过")
 			c.Set("user", u)
+			if pid != nil {
+				c.Set("product_id", *pid)
+			}
 			c.Next()
 			return
 		}
 
 		log.Debug("无任何认证方式")
-		Unauthorized(c)
+		c.AbortWithStatusJSON(http.StatusUnauthorized, Err.Unauthorized.JSON())
 
 	}
 }
-func authCookie(c *gin.Context) (modb.User, bool, error) {
+func authCookie(c *gin.Context) (db.User, *uuid.UUID, bool, error) {
 	log.Debug3("尝试Cookie认证")
 	cookie, err := c.Cookie("jwt")
 
 	if err != nil {
 		if err == http.ErrNoCookie {
 			log.Debug3("无cookie")
-			return modb.User{}, false, nil
+			return db.User{}, nil, false, nil
 		}
-		return modb.User{}, false, err
+		return db.User{}, nil, false, err
 	}
 
 	uid, category, claims, err := cache.GetUserFromCookie(cookie)
 	if err != nil {
-		return modb.User{}, false, err
+		return db.User{}, nil, false, err
 	}
 	if claims == nil {
-		return modb.User{}, false, nil
+		return db.User{}, nil, false, nil
 	}
 
 	c.Set("claims", *claims)
-	return modb.GetUserByIDAndCategory(uid, category)
+	return db.GetUserByIDAndCategory(uid, category)
 }
-func authAPI(c *gin.Context) (modb.User, bool, error) {
+func authAPI(c *gin.Context) (db.User, *uuid.UUID, bool, error) {
 	log.Debug3f("尝试API认证")
 
 	api := c.Request.Header.Get("Authorization")
 	if api == "" {
-		return modb.User{}, false, nil
+		return db.User{}, nil, false, nil
 	}
 
-	return modb.GetUserFromAPI(api)
+	return db.GetUserFromAPI(api)
 }
